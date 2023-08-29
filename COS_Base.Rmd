@@ -1,0 +1,84 @@
+---
+title: "COS_Base"
+author: "Ryan Peterson"
+date: "2023-08-22"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+```
+
+
+Goal: begin work on Change of Support problem/code
+
+
+
+
+```{r test_data}
+load("COSExampleData.rda")
+```
+
+Loaded test data includes:
+
+-polyGroups
+ polyGroups is a list with each component being a 2 column matrix with the outlines of the region. 
+ 5 rows and 2 columns that create an outline of a region (block) 
+ these 5 points draw the outline of our object. (beginning and end point are included even though they are the same)
+
+-polyGroupsRandom
+
+-polyGroupsRandomBig
+
+Initial Exploration:
+
+# Regular Tiles
+
+From `COSExampleRegularTiles.R` script
+
+Setup for this script includes several function files
+
+```{r function_files}
+source("R/basisIntegral.R")
+source("R/integralPolyFunction.R")
+# patch in newer version of LK functions
+source("R/LatticeKrig.R")
+source("R/LKrigFindLambda.R")
+source("R/print.LatticeKrig.R" )
+```
+
+We begin by creating a Setup file for LatticeKrig, with only a single layer, and an a weight only  slightly above minimum (a.wght > 4). This will also create a $25 \times 25$ grid of values on our given `sDomain`.
+
+```{r}
+#uses lattice krig setup file
+LKinfo<- LKrigSetup(sDomain, NC=25, nlevel=1, a.wght = 4.1,
+                    NC.buffer = 0, normalize = FALSE)
+
+#creates a couple functions, not sure what they do yet.
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+```
+
+
+
+
+```{r}
+# create matrix for fixed effects integrals
+# (a linear function of coordinates in this case)
+U1<- integralPolyFunction(polyGroups, M = 200)  # default is constant function 
+U2<- integralPolyFunction(polyGroups,
+      FUN=function(s){s[,1]}, M = 200)
+U3<- integralPolyFunction(polyGroups,
+      FUN=function(s){s[,2]}, M = 200)
+U<- cbind( U1,U2,U3) # U can be a dense matrix
+```
+
