@@ -1,0 +1,305 @@
+---
+title: "LK_DF"
+author: "Ryan Peterson"
+date: "2023-11-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+library( scales)
+```
+
+Data Fusion with LatticeKrig
+
+Steps:
+
+1. Create predictions for each split using LK
+
+2. Combine $X$ and $U$ matrices.
+
+Later steps
+
+3. Find our $a_F$ coefficients for the fusion of both data sets
+
+4. Combined prediction, compared with "ground truth"
+
+
+Begin with sample data set from COSP for LK and split the data into two. 
+
+-This is `polyGroup` data that consists of random geometric objects
+
+# Data partition
+
+Taking our simulated block data and splitting (partitioning) it by various methods.
+
+1. Random and Ordered data
+
+a. Combine Random and Ordered then 50/50 split
+
+2. Random 50/50 split (2 random data sets)
+
+3. Random non-50/50 split
+
+4. Split by block size
+
+
+TODO: 
+
+1. Compare coefficients $d$ and $c$ for indiviudal and fused predictions
+
+```{r function_files}
+source("COSExample/R/basisIntegral.R")
+source("COSExample/R/integralPolyFunction.R")
+# patch in newer version of LK functions
+source("COSExample/R/LatticeKrig.R")
+source("COSExample/R/LKrigFindLambda.R")
+source("COSExample/R/print.LatticeKrig.R" )
+```
+
+#Observation of Visualizations
+
+
+```{r}
+#importing polyGroup data to work with.
+load("COSExampleData.rda")
+load("COSExampleData2.rda")
+
+#begin with visualization of simulated data
+
+#TODO: make adjustments to this data to account for the size of each block
+
+
+
+N<- length(polyGroupsRandom)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n", 
+      xlab = "x", ylab = "y")
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+
+N<- length(polyGroupsRandom2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom2, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n", 
+      xlab = "x", ylab = "y")
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom2[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+N <- length(polyGroupsRandom)
+M <- length(polyGroupsRandom2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom, cScale)
+cTab2<- color.scale(yObsRandom2, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n", 
+      xlab = "x", ylab = "y")
+for (j in 1:M) {
+  polyTmp<- polyGroupsRandom[[j]]
+  polygon(polyTmp, col=cTab[j], border="black", lwd=.2)
+}
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom2[[k]]
+  polygon(polyTmp, col=cTab2[k], border="black", lwd=.4)
+}
+
+
+
+#get vis for true surface
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=turbo(256))
+title("True Surface")
+
+#for polygroups split into two equal sized data sets 
+#TODO: add in centroids from
+
+```
+
+# Create Individual Predictions
+
+Using LatticeKrig for regular and random block data
+
+```{r LK_setup}
+#uses lattice krig setup file
+##test later wih a NC.buffer
+LKinfo<- LKrigSetup(sDomain, NC=25, nlevel=1, a.wght = 4.1,
+                    NC.buffer = 0, normalize = FALSE)
+
+#creates a couple functions, not sure what they do yet.
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+```
+
+```{r regular}
+#perform the COSP LK for each data set, and get SE surface as well
+
+#begin with regular tiles for predictions, we'll let LK find lambda and aRange
+# create matrix for fixed effects integrals
+# (a linear function of coordinates in this case)
+U1<- integralPolyFunction(polyGroupsRandom2, M = 200)  # default is constant function 
+U2<- integralPolyFunction(polyGroupsRandom2,
+      FUN=function(s){s[,1]}, M = 200)
+U3<- integralPolyFunction(polyGroupsRandom2,
+      FUN=function(s){s[,2]}, M = 200)
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+# integrals of basis functions
+X_1<- basisIntegral( polyGroupsRandom2, LKinfo, M = 400)
+X_1<- spind2spam(X_1)
+
+# estimating lambda and the a.wght parameter
+fit1<- LatticeKrig( sDomain, yObsRandom2, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+                   
+set.panel(1,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit1, zlim =zlim)
+title("lambda and a.wght MLEs")
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+set.panel(1,2)
+zlim<- range( gTrue)
+surface( fit1, zlim=zlim)
+title("lambda and a.wght MLEs")
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+title("Prediction SE")
+```
+
+```{r random}
+#using the random implementation
+
+# create matrix for fixed effects integrals
+# (a linear function of coordinates in this case)
+U1<- integralPolyFunction(polyGroupsRandom, M = 200)  # default is constant function 
+U2<- integralPolyFunction(polyGroupsRandom,
+      FUN=function(s){s[,1]}, M = 200)
+U3<- integralPolyFunction(polyGroupsRandom,
+      FUN=function(s){s[,2]}, M = 200)
+U_2<- cbind( U1,U2,U3) # U can be a dense matrix
+
+# integrals of basis functions
+X_2<- basisIntegral( polyGroupsRandom, LKinfo, M = 400)
+X_2<- spind2spam(X_2)
+
+# estimating lambda and the a.wght parameter
+fit2<- LatticeKrig( sDomain, yObsRandom, U=U_2, X=X_2, LKinfo=LKinfo,
+                    findAwght=TRUE)
+                   
+set.panel(1,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit2, zlim =zlim)
+title("lambda and a.wght MLEs")
+
+simOut2<- LKrig.sim.conditional( fit2,  M=100) 
+
+set.panel(1,2)
+zlim<- range( gTrue)
+surface( fit2, zlim=zlim)
+title("lambda and a.wght MLEs")
+imagePlot(as.surface(simOut2$x.grid,simOut2$SE))
+title("Prediction SE")
+```
+
+
+# Data Fusion with LatticeKrig
+
+We have two methods to compare: 
+
+1. Base COSP with LatticeKrig:
+Consider estimates from Lattice Krig where,
+$$\textbf{z}_F = U_F \textbf{d} + X_F \textbf{c} + \textbf{e}.$$
+
+Create a $U_F$ and a $X_F$ matrix for LatticeKrig from our combined data sets.
+
+
+```{r}
+#Base DF with LatticeKrig
+U_F <- rbind(U_1, U_2)
+
+#create new matrix X_F
+X_F <- rbind(X_1, X_2)
+
+
+y_full <- append(yObsRandom2, yObsRandom)
+
+# estimating lambda and the a.wght parameter
+fit_F<- LatticeKrig( sDomain, y_full, U=U_F, X=X_F, LKinfo=LKinfo,
+                    findAwght=TRUE)
+                   
+set.panel(1,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit_F, zlim =zlim)
+title("lambda and a.wght MLEs")
+
+simOut_F<- LKrig.sim.conditional( fit_F,  M=100) 
+
+set.panel(1,2)
+zlim<- range( gTrue)
+surface( fit_F, zlim=zlim)
+title("lambda and a.wght MLEs")
+imagePlot(as.surface(simOut_F$x.grid,simOut_F$SE))
+title("Prediction SE")
+
+```
+
+
+```{r pred_error_plots}
+zlim<- range( gTrue)
+sim_SE <- c(simOut2$SE, simOut1$SE, simOut_F$SE)
+SE_lim <- range(sim_SE)
+
+save("pred_SE_fusion.pdf")
+set.panel(2,2)
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE), zlim = SE_lim)
+title("Data 1 Prediction SE")
+imagePlot(as.surface(simOut2$x.grid,simOut2$SE), zlim = SE_lim)
+title("Data 2 Prediction SE")
+imagePlot(as.surface(simOut_F$x.grid,simOut_F$SE), zlim =SE_lim)
+title("Data Fusion Prediction SE")
+dev.off
+
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=turbo(256))
+title("True Surface")
+
+surface( fit_F, xlab="x", ylab= "y",
+        zlim =zlim, col=turbo(256))
+title("Data Fusion Surface")
+```
+
+
+2. Applying the methodology from SSDF:
+Where $a_F = (a_1, a_2)^T$, where $a_i$ is the fusion coefficient for a given dataset.
+Then
+$$\widehat{Y}(B) = a_F^T Z_F(B).$$
+However, we need to find the vectorr $a_F^T$ using Lagrange multipliers. 
