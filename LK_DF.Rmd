@@ -68,12 +68,15 @@ source("COSExample/R/print.LatticeKrig.R" )
 #importing polyGroup data to work with.
 load("COSExampleData.rda")
 load("COSExampleData2.rda")
-
-#begin with visualization of simulated data
-
-#TODO: make adjustments to this data to account for the size of each block
+load("COSExampleNEW.rda")
+```
 
 
+begin with visualization of simulated data
+
+TODO: make adjustments to this data to account for the size of each block
+
+```{r}
 
 N<- length(polyGroupsRandom)
 cScale<- alpha(turbo(256),.5)
@@ -133,6 +136,10 @@ title("True Surface")
 Using LatticeKrig for regular and random block data
 
 ```{r LK_setup}
+#updated sDomain
+sDomain<- rbind( c( -1,-1),
+                 c( 1,2))
+
 #uses lattice krig setup file
 ##test later wih a NC.buffer
 LKinfo<- LKrigSetup(sDomain, NC=25, nlevel=1, a.wght = 4.1,
@@ -226,6 +233,76 @@ imagePlot(as.surface(simOut2$x.grid,simOut2$SE))
 title("Prediction SE")
 ```
 
+```{r big1}
+U1<- integralPolyFunction(polyGroupsRandomBig, M = 200)  # default is constant function 
+U2<- integralPolyFunction(polyGroupsRandomBig,
+      FUN=function(s){s[,1]}, M = 200)
+U3<- integralPolyFunction(polyGroupsRandomBig,
+      FUN=function(s){s[,2]}, M = 200)
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+# integrals of basis functions
+X_1<- basisIntegral( polyGroupsRandomBig, LKinfo, M = 400)
+X_1<- spind2spam(X_1)
+
+# estimating lambda and the a.wght parameter
+fit1<- LatticeKrig( sDomain, yObsRandomBig, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+
+#fix gtrue and true surface to new true surface                   
+set.panel(1,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit1, zlim =zlim)
+title("lambda and a.wght MLEs")
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+set.panel(1,2)
+surface( fit1, col=turbo(256))
+title("lambda and a.wght MLEs")
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+title("Prediction SE")
+```
+
+```{r big2}
+U1<- integralPolyFunction(polyGroupsRandomBig_2, M = 200)  # default is constant function 
+U2<- integralPolyFunction(polyGroupsRandomBig_2,
+      FUN=function(s){s[,1]}, M = 200)
+U3<- integralPolyFunction(polyGroupsRandomBig_2,
+      FUN=function(s){s[,2]}, M = 200)
+U_2<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+# integrals of basis functions
+X_2<- basisIntegral( polyGroupsRandomBig_2, LKinfo, M = 400)
+X_2<- spind2spam(X_2)
+
+# estimating lambda and the a.wght parameter
+fit2<- LatticeKrig( sDomain, yObsRandomBig_2, U=U_2, X=X_2, LKinfo=LKinfo,
+                    findAwght=TRUE)
+                   
+set.panel(1,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit2, zlim =zlim)
+title("lambda and a.wght MLEs")
+
+simOut2<- LKrig.sim.conditional( fit1,  M=100) 
+
+set.panel(1,2)
+zlim<- range( gTrue)
+surface( fit1, col=turbo(256))
+title("lambda and a.wght MLEs")
+imagePlot(as.surface(simOut2$x.grid,simOut2$SE))
+title("Prediction SE")
+```
+
 
 # Data Fusion with LatticeKrig
 
@@ -246,7 +323,7 @@ U_F <- rbind(U_1, U_2)
 X_F <- rbind(X_1, X_2)
 
 
-y_full <- append(yObsRandom2, yObsRandom)
+y_full <- append(yObsRandomBig, yObsRandomBig_2)
 
 # estimating lambda and the a.wght parameter
 fit_F<- LatticeKrig( sDomain, y_full, U=U_F, X=X_F, LKinfo=LKinfo,
@@ -254,17 +331,16 @@ fit_F<- LatticeKrig( sDomain, y_full, U=U_F, X=X_F, LKinfo=LKinfo,
                    
 set.panel(1,2)
 zlim<- range( gTrue)
-surface(as.surface( gridTrue, gTrue) , 
-        zlim =zlim, col=viridis(256))
+surface(as.surface( gridTrue, gTrue), col=viridis(256))
 title("true surface")
-surface( fit_F, zlim =zlim)
+surface( fit_F)
 title("lambda and a.wght MLEs")
 
 simOut_F<- LKrig.sim.conditional( fit_F,  M=100) 
 
 set.panel(1,2)
 zlim<- range( gTrue)
-surface( fit_F, zlim=zlim)
+surface( fit_F)
 title("lambda and a.wght MLEs")
 imagePlot(as.surface(simOut_F$x.grid,simOut_F$SE))
 title("Prediction SE")
@@ -278,7 +354,7 @@ sim_SE <- c(simOut2$SE, simOut1$SE, simOut_F$SE)
 SE_lim <- range(sim_SE)
 
 save("pred_SE_fusion.pdf")
-set.panel(2,2)
+set.panel(1,3)
 imagePlot(as.surface(simOut1$x.grid,simOut1$SE), zlim = SE_lim)
 title("Data 1 Prediction SE")
 imagePlot(as.surface(simOut2$x.grid,simOut2$SE), zlim = SE_lim)

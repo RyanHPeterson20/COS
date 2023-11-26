@@ -1,0 +1,481 @@
+---
+title: "COS_synthetic"
+author: "Ryan Peterson"
+date: "2023-11-10"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+suppressMessages(library( fields))
+suppressMessages(library( LatticeKrig))
+```
+
+Goal: create various forms of our synthetic data to test with
+
+```{r functions}
+source( "basisIntegral.R")
+source("integralPolyFunction.R")
+```
+
+Visualizations for Random Big 1 & 2, Grid, and True Surface are all in this Document.
+
+TODO:
+
+1. Change the true surface (DONE)
+
+2. Create variations in the sampling and increase the sample size to 5000 (DONE)
+
+3. Get visualizations for true surface and sampling (In Progress)
+
+4. Get are of each sample block
+
+Create polygons
+
+```{r}
+M1<- 32
+M2<- 32
+sDomain<- rbind( c( -1,-1),
+                 c( 1,2))
+tileGridX<- seq( sDomain[1,1],sDomain[2,1], length.out = M1+1)
+tileGridY<- seq( sDomain[1,2],sDomain[2,2], length.out = M2+1)
+tmpGrid<- list( x= tileGridX[1:M1] + diff(tileGridX)/2, 
+                y= tileGridY[1:M2] + diff(tileGridY)/2
+                )
+
+# for plotting later on 
+tileCenters<-  make.surface.grid( tmpGrid)
+```
+
+Polygon groups (different orientations of polygons)
+
+```{r base_polygon}
+polyGroups<- NULL
+for( j in 1:M1){
+  for ( k in 1:M2){
+    newPoly<-  rbind( c(tileGridX[j], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k])
+    )
+    polyGroups<- c( polyGroups,list(newPoly))
+  }
+}
+
+rm(j,k, newPoly)
+```
+
+
+```{r random_polygonsBIG}
+#create two random big sets of polygons
+polyGroupsRandomBig <- NULL
+dx <- tileGridX[2] - tileGridX[1]
+dy <- tileGridY[2] - tileGridY[1]
+M<- 5000
+set.seed(155)
+for( i in 1:M){
+    X1<- runif(1, sDomain[1,1], sDomain[2,1]) 
+    Y1<- runif(1, sDomain[1,2], sDomain[2,2]) 
+    ranScale<- runif( 1,.25,.5)
+    X2<- min(c( X1+(2*dx*ranScale),sDomain[2,1] ))
+    Y2<- min(c( Y1+(2*dy*ranScale),sDomain[2,2] ))
+    
+    newPoly<-  rbind( c(X1, Y1),
+                      c(X2, Y1),
+                      c(X2, Y2),
+                      c(X1, Y2),
+                      c(X1, Y1)
+    )
+    polyGroupsRandomBig<- c( polyGroupsRandomBig,list(newPoly))
+}
+
+polyGroupsRandomBig_2 <- NULL
+dx <- tileGridX[2] - tileGridX[1]
+dy <- tileGridY[2] - tileGridY[1]
+M<- 5000
+set.seed(200)
+for( j in 1:M){
+    X1<- runif(1, sDomain[1,1], sDomain[2,1]) 
+    Y1<- runif(1, sDomain[1,2], sDomain[2,2]) 
+    ranScale<- runif( 1,.20,.55)
+    X2<- min(c( X1+(2*dx*ranScale),sDomain[2,1] ))
+    Y2<- min(c( Y1+(2*dy*ranScale),sDomain[2,2] ))
+    
+    newPoly<-  rbind( c(X1, Y1),
+                      c(X2, Y1),
+                      c(X2, Y2),
+                      c(X1, Y2),
+                      c(X1, Y1)
+    )
+    polyGroupsRandomBig_2<- c( polyGroupsRandomBig_2, list(newPoly))
+}
+
+rm(M, i, j, newPoly)
+```
+
+```{r test_vis}
+yTrueRandomBig<-  integralPolyFunction(polyGroupsRandomBig,
+                                    FUN=FUNTrue,
+                                    M = 400)
+
+set.seed( 114)
+n<- length( yTrueRandomBig)
+tau<- .1
+yObsRandomBig<- yTrueRandomBig +  tau*rnorm(n )
+
+N<- length(polyGroupsRandomBig)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandomBig, cScale)
+plot( sDomain, type="n", axes = FALSE,
+      xlab = "x", ylab = "y", main = "Dataset 1")
+axis(1)
+axis(2, las =1)
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandomBig[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+#addLegend(layout, col=cScale, zlim= range(yTrueRandomBig ))
+```
+
+```{r polyGroupsRandomBig_2_vis}
+yTrueRandomBig_2 <- integralPolyFunction(polyGroupsRandomBig_2,
+                                    FUN=FUNTrue,
+                                    M = 400)
+
+set.seed( 158)
+n <- length( yTrueRandomBig_2)
+tau <- .1
+yObsRandomBig_2 <- yTrueRandomBig_2 +  tau*rnorm(n )
+
+N<- length(polyGroupsRandomBig_2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandomBig_2, cScale)
+plot( sDomain, type="n",  axes = FALSE,
+      xlab = "x", ylab = "y", main = "Dataset 2")
+axis(1)
+axis(2, las =1)
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandomBig_2[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+```
+
+
+```{r grid_polygon_vis}
+yTrue<-  integralPolyFunction(polyGroups,
+                              FUN=FUNTrue,
+                              M = 400)
+set.seed( 111)
+n<- length( yTrue)
+tau<- .1
+yObs<- yTrue +  tau*rnorm(n )
+
+N<- length(polyGroups)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObs, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n")
+for ( k in 1:N){
+  polyTmp<- polyGroups[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+```
+
+```{r larger_grid_size}
+M1<- 24
+M2<- 24
+sDomain<- rbind( c( -1,-1),
+                 c( 1,2))
+tileGridX<- seq( sDomain[1,1],sDomain[2,1], length.out = M1+1)
+tileGridY<- seq( sDomain[1,2],sDomain[2,2], length.out = M2+1)
+tmpGrid<- list( x= tileGridX[1:M1] + diff(tileGridX)/2, 
+                y= tileGridY[1:M2] + diff(tileGridY)/2
+                )
+
+polyGroups2<- NULL
+for( j in 1:M1){
+  for ( k in 1:M2){
+    newPoly<-  rbind( c(tileGridX[j], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k])
+    )
+    polyGroups2<- c( polyGroups2,list(newPoly))
+  }
+}
+
+yTrue2<-  integralPolyFunction(polyGroups2,
+                              FUN=FUNTrue,
+                              M = 400)
+set.seed( 123)
+n<- length( yTrue2)
+tau<- .1
+yObs2<- yTrue2 +  tau*rnorm(n )
+
+N<- length(polyGroups2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObs2, cScale)
+plot( sDomain, type="n",  axes = FALSE,
+      xlab = "x", ylab = "y", main = "Grid Dataset")
+axis(1)
+axis(2, las =1)
+for ( k in 1:N){
+  polyTmp<- polyGroups2[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+save(polyGroups2, yTrue2, yObs2, 
+     polyGroupsRandomBig_2, yTrueRandomBig_2, yObsRandomBig_2,
+     polyGroupsRandomBig, yTrueRandomBig, yObsRandomBig,  file = "COSExampleNEW.rda")
+```
+
+
+```{r old}
+polyGroups<- NULL
+for( j in 1:M1){
+  for ( k in 1:M2){
+    newPoly<-  rbind( c(tileGridX[j], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k])
+    )
+    polyGroups<- c( polyGroups,list(newPoly))
+  }
+}
+
+polyGroupsRandom<- NULL
+set.seed(111)
+dx<- tileGridX[2] - tileGridX[1]
+dy<- tileGridY[2] - tileGridY[1]
+M<- M1*M2
+for( i in 1: (M)){
+  X1<- runif(1, sDomain[1,1], sDomain[2,1]) 
+  Y1<- runif(1, sDomain[1,2], sDomain[2,2]) 
+  ranScale<- 1.0
+  X2<- min(c( X1+dx*ranScale,sDomain[2,1] ))
+  Y2<- min(c( Y1+dy*ranScale,sDomain[2,2] ))
+  
+  newPoly<-  rbind( c(X1, Y1),
+                    c(X2, Y1),
+                    c(X2, Y2),
+                    c(X1, Y2),
+                    c(X1, Y1)
+  )
+  
+ polyGroupsRandom<- c( polyGroupsRandom,list(newPoly))
+}
+```
+
+
+
+
+```{r random2}
+polyGroupsRandom2 <- NULL
+set.seed(555)
+dx<- tileGridX[2] - tileGridX[1]
+dy<- tileGridY[2] - tileGridY[1]
+M<- M1*M2
+for( i in 1: (M)){
+  X1<- runif(1, sDomain[1,1], sDomain[2,1]) 
+  Y1<- runif(1, sDomain[1,2], sDomain[2,2]) 
+  ranScale<- 1.0
+  X2<- min(c( X1+dx*ranScale,sDomain[2,1] ))
+  Y2<- min(c( Y1+dy*ranScale,sDomain[2,2] ))
+  
+  newPoly<-  rbind( c(X1, Y1),
+                    c(X2, Y1),
+                    c(X2, Y2),
+                    c(X1, Y2),
+                    c(X1, Y1)
+  )
+  
+ polyGroupsRandom2<- c( polyGroupsRandom2,list(newPoly))
+}
+```
+
+
+Get area of each poly group
+
+```{r area}
+#assign an area to each polygon object (for polyGroups and polyGroupsRandom)
+
+#using this for now, I'd like to not have this dependency
+library(pracma)
+
+n <- length(polyGroups)
+area_matrix <- matrix(NA, nrow = n, ncol =1)
+for (i in 1:n) {
+  temp <- polyGroups[[i]]
+  x1 <- temp[,1]
+  y1 <- temp[,2]
+  area_matrix[i] <- polyarea(x1,y1)
+}
+
+m <- length(polyGroupsRandom)
+area_matrix_random <- matrix(NA, nrow = m, ncol =1)
+for (i in 1:m) {
+  temp <- polyGroupsRandom[[i]]
+  x1 <- temp[,1]
+  y1 <- temp[,2]
+  area_matrix_random[i] <- polyarea(x1,y1)
+}
+```
+
+True spatial field
+
+```{r true_function}
+#set up grid
+bigGridList<- list( x= seq(-1,1,length.out=500), y= seq(0,2,length.out=500) )
+dx<- bigGridList$x[2] - bigGridList$x[1]
+dy<-bigGridList$y[2] - bigGridList$y[1]
+bigGrid<- make.surface.grid( bigGridList)
+
+# true function 
+FUNTrue<- function(bigGrid){
+D1<-  sqrt((bigGrid[,1] - 0.8)^2 + (bigGrid[,2] - 1.5)^2)
+D2 <- sqrt((bigGrid[,1])^2 + (bigGrid[,2]-1)^2)
+D3 <-  sqrt((bigGrid[,1] + 0.75)^2 + (bigGrid[,2] + 0.5)^2) 
+g<-   100*(2*exp( -1*D1/0.5) +  1.75*exp( -1*D2/.5) + exp( -1*D3/0.2))
+return(g)
+}
+
+yTrue <- integralPolyFunction(polyGroups,
+                              FUN=FUNTrue,
+                              M = 400)
+
+gridTrue <- list( x= seq( sDomain[1,1],sDomain[2,1], length.out = 100),
+                 y= seq( sDomain[1,2],sDomain[2,2], length.out = 100)
+)
+trueXY <- make.surface.grid( gridTrue )
+gTrue <- FUNTrue(trueXY)
+
+
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=turbo(256))
+title("True Surface")
+```
+
+
+```{r}
+yTrue <- integralPolyFunction(polyGroups,
+                              FUN=FUNTrue,
+                              M = 400)
+yTrueRandom <- integralPolyFunction(polyGroupsRandom,
+                              FUN=FUNTrue,
+                              M = 400)
+
+yTrueRandom2 <- integralPolyFunction(polyGroupsRandom2,
+                              FUN=FUNTrue,
+                              M = 400)
+
+gridTrue <- list( x= seq( sDomain[1,1],sDomain[2,1], length.out = 100),
+                 y= seq( sDomain[1,2],sDomain[2,2], length.out = 100)
+)
+trueXY <- make.surface.grid( gridTrue )
+gTrue <- FUNTrue(trueXY)
+
+# make up the data
+set.seed( 111)
+n<- length( yTrue)
+tau<- .1
+yObs<- yTrue +  tau*rnorm(n )
+
+set.seed( 112)
+n<- length( yTrueRandom)
+yObsRandom<- yTrueRandom +  tau*rnorm(n )
+
+set.seed( 113)
+n<- length( yTrueRandom2)
+yObsRandom2<- yTrueRandom2 +  tau*rnorm(n )
+
+#set.seed( 114)
+#n<- length( yTrueRandomBig)
+#yObsRandomBig<- yTrueRandomBig +  tau*rnorm(n )
+
+
+```
+
+
+
+```{r reg_wide}
+N1 <- 8
+N2 <- 8
+
+tileGridX<- seq( sDomain[1,1],sDomain[2,1], length.out = N1+1)
+tileGridY<- seq( sDomain[1,2],sDomain[2,2], length.out = N2+1)
+tmpGrid<- list( x= tileGridX[1:N1] + diff(tileGridX)/2, 
+                y= tileGridY[1:N2] + diff(tileGridY)/2
+                )
+
+polyGroupsWide<- NULL
+for( j in 1:N1){
+  for ( k in 1:N2){
+    newPoly<-  rbind( c(tileGridX[j], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k]),
+                      c(tileGridX[j+1], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k+1]),
+                      c(tileGridX[j], tileGridY[k])
+    )
+    polyGroupsWide<- c( polyGroupsWide,list(newPoly))
+  }
+}
+
+yTrueWide <- integralPolyFunction(polyGroupsWide,
+                              FUN=FUNTrue,
+                              M = 400)
+
+# make up the data
+set.seed( 111)
+n<- length( yTrueWide)
+tau<- .1
+yObsWide<- yTrueWide +  tau*rnorm(n )
+
+save(polyGroupsWide, yTrueWide, yObsWide, 
+    polyGroupsRandom2, yTrueRandom2, yObsRandom2, file = "COSExampleData2.rda")
+
+```
+
+
+Add in some visualization to check
+
+```{r}
+N<- length(polyGroupsRandom)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n")
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+
+N<- length(polyGroupsRandom2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom2, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n")
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom2[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+N<- length(polyGroupsRandom)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObsRandom, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n")
+for ( k in 1:N){
+  polyTmp<- polyGroupsRandom[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+
+```
+

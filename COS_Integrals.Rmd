@@ -1,0 +1,165 @@
+---
+title: "COS_Integrals"
+author: "Ryan Peterson"
+date: "2023-10-10"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+suppressMessages(library(LatticeKrig))
+```
+
+
+Goal: to understand how `integralPolyFunction.R` and `basisIntegral.R` work. With extensions to using line integrals.
+
+When done we can convert this to an R script that has all the integral functions.
+
+Stretch goals:
+
+-pass in shapefiles as polyGroups
+
+
+
+```{r}
+#importing polyGroup data to work with.
+load("COSExampleData.rda")
+```
+
+LKinfo: passed from latticeKrig, set up LKinfo first
+
+```{r LKinfo}
+#setup for LKinfo (which should be used in the function)
+LKinfo<- LKrigSetup(sDomain, NC=25, nlevel=1, a.wght = 4.1,
+                    NC.buffer = 0, normalize = FALSE)
+```
+
+
+# integralPolyFunction
+(integrals for fixed effects)
+Function parameters:
+polyGroups: polygon regions/geometric objects in the form of 2 column matrix that creates a closed curve; 
+FUN: some function, default: NULL; 
+-first parameter of the function must take in grid data (location data in the form (x,y))
+M: number of points used to integrate over, default = 200
+
+
+```{r functions}
+#creates a couple functions, not sure what they do yet.
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+```
+
+
+```{r integralPolyFunction}
+#build without the function wrapper
+
+##from `integralPolyFunction.R`:
+# "polyGroups is a list with each component being a 2 column matrix with the outlines of the region."
+# "uses the basis information in a LKinfo LKinfo"
+# "M is the number of points used to integrate over basis function"
+
+#pass parameters (for default constant function, update for x and y later):
+polyGroups <- polyGroups
+FUN <- NULL
+M <- 200
+
+
+
+#length of polyGroups matrix (number of geometric objects)
+N1 <- length(polyGroups)
+
+#create empty object the length of the total number of objects
+theIntegrals<-rep(NA, N1)
+
+#perform below loop on a samller set of values
+
+# loop over the polygon regions
+for (j in 1:N1) {
+  #select a geom object
+  polyTmp <- (polyGroups)[[j]]
+  
+  # creates list of M points between the min x (left) and max x (right),
+  # M points between min y (bottom) and max y (top)
+  ##appears to only hand rectangular objects, however, this might also work for other objects.
+  polyGridList <- list(
+                   x= seq(min(polyTmp[,1]), max(polyTmp[,1]), length.out=M),
+                   y= seq(min(polyTmp[,2]), max(polyTmp[,2]), length.out=M)
+                   )
+  print(polyGridList)
+  
+  #distance between each integration point (M =200)
+  dxP <- polyGridList$x[2] - polyGridList$x[1]
+  dyP <-polyGridList$y[2] - polyGridList$y[1]
+  
+  #surface of M^2 points and 2 * M^2 elements
+  polyGrid <- make.surface.grid( polyGridList)
+  
+  #fields function to determine if the points of polyGrid are inside the polygon polyTmp
+  ind <- in.poly(polyGrid, polyTmp)
+  polyGrid<- polyGrid[ind,]
+}
+```
+
+
+```{r test_block}
+M <- 200
+j <- 2
+
+polyTmp <- (polyGroups)[[j]]
+polyGridList <- list(
+                x= seq(min(polyTmp[,1]), max(polyTmp[,1]), length.out=M),
+                y= seq(min(polyTmp[,2]), max(polyTmp[,2]), length.out=M)
+                )
+dxP<-  polyGridList$x[2] - polyGridList$x[1]
+dyP<-  polyGridList$y[2] - polyGridList$y[1]
+
+
+#surface grid of 40,000 (200 x 200) points (80,000 elements (e.g. x,y for each point))
+polyGrid <- make.surface.grid( polyGridList)
+
+#TODO: try to output this visually with the polygon
+#look up USGS work for a similar example
+ind <- in.poly(polyGrid, polyTmp)
+
+#selects for only values (rows) of the grid that are inside the polygon
+polyGrid <- polyGrid[ind,]
+
+#if else conditionals
+#if !is.null(FUN), if that function is not null, then
+look <- FUN(polyGrid, ... ) #passing grid data to the function
+the_integral <- sum( look)*dxP*dyP 
+
+#else (that is FUN = NULL) (unit blocks/points)
+the_integral <- sum( ind)*dxP*dyP
+```
+
+# basisIntegral
+(integral for random effects, from basis functions and GMRF)
+Function parameters:
+
+
+```{r basisIntegral}
+#parameters
+polyGroups <- polyGroups
+LKinfo <- LKinfo
+M = 200
+check=TRUE
+
+# setup basis function info
+
+#number of levels for the basis functions (from LKInfo set up)   
+nLevel <- LKinfo$nlevel
+
+  
+```
+

@@ -14,14 +14,26 @@ suppressMessages(library(LatticeKrig))
 ```
 
 
-Goal: begin work on Change of Support problem/code
+Goal: begin work on Change of Support problem/code for LatticeKrig
 
+Consider estimates from Lattice Krig where,
+$$\textbf{z} = U \textbf{d} + X \textbf{c} + \textbf{e}.$$
 
-
+Thus, we want to create a $U$ and a $X$ matrix for LatticeKrig from out block data.
 
 ```{r test_data}
 load("COSExampleData.rda")
 ```
+
+Test data is generated from :
+`createExampleCOSLatticeKrig1.R`
+Which: creates the synthetic COS data sets to test
+
+To change the underlying surface that the data is generated from adjust the function:
+`FUNTrue` in `createExampleCOSLatticeKrig1.R`
+
+This is the true function of the surface we are trying to find from the block data.
+
 
 Loaded test data includes:
 
@@ -31,10 +43,15 @@ Loaded test data includes:
  these 5 points draw the outline of our object. (beginning and end point are included even though they are the same)
 
 -polyGroupsRandom
+  
+--Primary randomly generated blocks/areal units
 
 -polyGroupsRandomBig
 
 Initial Exploration:
+
+-To look at data fusion we want either split the polyGroups or create centroids from each polyGroup
+--I think the centroids have been found in a file somewhere.
 
 # Regular Tiles
 
@@ -43,18 +60,21 @@ From `COSExampleRegularTiles.R` script
 Setup for this script includes several function files
 
 ```{r function_files}
-source("R/basisIntegral.R")
-source("R/integralPolyFunction.R")
+source("COSExample/R/basisIntegral.R")
+source("COSExample/R/integralPolyFunction.R")
 # patch in newer version of LK functions
-source("R/LatticeKrig.R")
-source("R/LKrigFindLambda.R")
-source("R/print.LatticeKrig.R" )
+source("COSExample/R/LatticeKrig.R")
+source("COSExample/R/LKrigFindLambda.R")
+source("COSExample/R/print.LatticeKrig.R" )
 ```
 
 We begin by creating a Setup file for LatticeKrig, with only a single layer, and an a weight only  slightly above minimum (a.wght > 4). This will also create a $25 \times 25$ grid of values on our given `sDomain`.
 
+`sDomain` is the spatial domain of interest where we have a easting (x axis) from $-1$ to $1$ and a northing (y axis) of $0$ to $2$. 
+
 ```{r}
 #uses lattice krig setup file
+##test later wih a NC.buffer
 LKinfo<- LKrigSetup(sDomain, NC=25, nlevel=1, a.wght = 4.1,
                     NC.buffer = 0, normalize = FALSE)
 
@@ -69,7 +89,23 @@ FUNY<- function(s){
 ```
 
 
+Review what this does again:
+Creates matrix of fixed effect integrals, where we look at the integralPolyFunction
+See the `integralPolyFunction.R` for more details
 
+Notes from `integralPolyFunction.R`:
+  # finds approx integral by keeping basis function fixed
+  # and translating and scaling the region.
+  # integrals returned in spind sparse matrix format
+  
+My dumb idea (MDI):
+- Include monte carlo integration if it isn't already included.
+
+
+
+Fixed effect matrix $U$, where $U_1$ is a default constant function, $U_2$ is for x values, and $U_3$ is for y values. Thus our $U$ matrix has some constant value, with x and y values.
+
+(Note: the parameter function function(s){s[,1]}, is a function that strips the first column of data that is passed to it. For example if $s$ is in the form $(x,y)$, then function(s){s[,1]} brings in the column of $x$s and function(s){s[,2]} brings in the column of $y$s.)
 
 ```{r}
 # create matrix for fixed effects integrals
@@ -79,6 +115,60 @@ U2<- integralPolyFunction(polyGroups,
       FUN=function(s){s[,1]}, M = 200)
 U3<- integralPolyFunction(polyGroups,
       FUN=function(s){s[,2]}, M = 200)
-U<- cbind( U1,U2,U3) # U can be a dense matrix
+U<- cbind( U1,U2,U3) # U can be a dense matrix for LK
+```
+
+
+Integrals of basis function for the $X$ matrix:
+
+`basisIntegral` produces sparse index matrix for the `spind2spam` function. Thus we have a sparse matrix $X$ from? Answer: this is from the random effects model, so that we are using the basis integral for the basis functions. And thus we get a sparse matrix from this data since this is the primary goal of LatticeKrig.
+
+```{r}
+# integrals of basis functions
+X<- basisIntegral( polyGroups, LKinfo, M = 400)
+X<- spind2spam(X)
+```
+
+
+From the last two sections we see that I am missing some understanding of how `integralPolyFunction.R` and `basisIntegral.R` work, so we have the file: `COS_Integrals.Rmd` to work through this, and Line integrals.
+
+Fitting the model with LatticeKrig, where we have a $U$ and $X$ generated above using `integralPolyFunction.R` and `basisIntegral.R`.
+
+```{r}
+# fit model using fixed lambda
+fit0<- LKrig( sDomain,yObs, U=U, X=X, LKinfo=LKinfo,
+              lambda=.01)
+
+# estimating lambda
+fit1<- LatticeKrig( sDomain,yObs, U=U, X=X, LKinfo=LKinfo)
+                    
+                   
+
+# estimating lambda and the a.wght parameter
+
+fit2<- LatticeKrig( sDomain,yObs, U=U, X=X, LKinfo=LKinfo,
+                    findAwght=TRUE)
+                   
+
+pdf("COSExampleFittedSurfaces.pdf", width=6, height=6)
+set.panel(2,2)
+zlim<- range( gTrue)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=viridis(256))
+title("true surface")
+surface( fit0, zlim =zlim)
+title("lambda=.01  a.wght=4.1")
+surface( fit1, zlim =zlim)
+title("lambda  MLE  a.wght=4.1")
+surface( fit2, zlim =zlim)
+title("lambda and a.wght MLEs")
+```
+
+## Random Big Prediction
+
+Create a prediction from the random big polygons
+
+```{r random_big}
+
 ```
 
