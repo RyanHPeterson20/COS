@@ -12,10 +12,10 @@
 ##M = 200, 
 ##check=TRUE
 
+suppressMessages(library(LatticeKrig))
 
 #set up Lkinfo: (normalize must be false)
-sDomain <- sDomain<- rbind( c( -1,-1),
-                            c( 1,2))
+sDomain<- rbind( c( -1,-1), c( 1,2))
 
 #look up alpha (setting nu as 1 instead)
 LKinfo <- LKrigSetup(sDomain, NC=25, nlevel=2, a.wght = 4.1,
@@ -42,7 +42,7 @@ nLevel <- LKinfo$nlevel
 gridList <- list(x = seq(-1, 1, length.out = M),
                  y = seq(-1, 1, length.out = M))
 
-#what does this do?
+#what does this do? Can we change this to a round object
 boundingBox<- rbind( c( -1,-1),
                      c( 1,-1),
                      c( 1,1),
@@ -57,6 +57,10 @@ xyGrid <- make.surface.grid(gridList)
 
 # values for the standard basis function on the grid
 #Note: the distance is defined as the L2 norm.
+#TODO: change this reflect the covariance set up in LKinfo
+#use LKrig.basis for basis functions
+test_basis <- LKrig.basis(xyGrid, LKinfo, verbose = TRUE) #in spam (get back from spam or use as is)
+test_basis <- spam2full(test_basis)
 zGrid <- Wendland(sqrt(xyGrid[, 1] ^ 2 + xyGrid[, 2] ^ 2),
                   dimension = 2,
                   k = 2)
@@ -130,6 +134,7 @@ basisInt <- foreach(j = 1:N1, .combine=rbind) %dopar% {
     basisGridList <- LKinfo$latticeInfo$grid[[l]]
     basisCenters <- fields::make.surface.grid(basisGridList) #requires
     
+    tempIntegral <- NULL
     for (k in basisIndex){
       # k is position at the L^th level
       polyStd <-
@@ -146,56 +151,25 @@ basisInt <- foreach(j = 1:N1, .combine=rbind) %dopar% {
         if (sum(inside) > 0) {
           # note basisScale factor has to be added because this sum is
           # over the  standard basis functions with  scale  1.0
-          sum(zGrid[inside])  * dx * dy * basisScale ^ 2
+          tmpIntegral <-sum(zGrid[inside])  * dx * dy * basisScale ^ 2
           # accumulate sparse matrix information
-          J <- c(J, j)
-          K <- c(K, k + basisOffset) # offset adjusts for preceding levels. 
+          #J <- c(J, j)
+          #K <- c(K, k + basisOffset) # offset adjusts for preceding levels. 
+          tempIntegral <- c(tempIntegral, tmpIntegral) 
         }
       }
       
     }
+    tempIntegral
   }
 }
 
 parallel::stopCluster(cl = my.cluster)
 
+
 #test section
 
-L <- 1
- 
-LKinfo$latticeInfo$delta[L]
-LKinfo$basisInfo$overlap
-
-# get info for the L^th level of the multi-resolution basis.
-basisIndex <- (1:LKinfo$latticeInfo$mLevel[L])
-basisOffset<- LKinfo$latticeInfo$offset[L]
-basisScale <- LKinfo$latticeInfo$delta[L]*LKinfo$basisInfo$overlap
-basisGridList <- LKinfo$latticeInfo$grid[[L]]
-basisCenters <- make.surface.grid(basisGridList)
-
-#test plots:
-#create basisCenters2 as centers of additional layers
-#TODO: add in lines of lattice, and overlay this under the test data
-plot(basisCenters2, pch = 16, cex = 0.5, 
-     xlim = c(-1, -0.5), ylim = c(-1, 0))
-points(basisCenters)
-
-
-#how are basis indices used (2nd for loop)
-k <- basisIndex[2]
-polyStd <- cbind((polyTmp[, 1] - basisCenters[k, 1]) / basisScale,
-        (polyTmp[, 2] - basisCenters[k, 2]) / basisScale)
-
-#since we standardizing the data points we can use a bounding box for the support.
-#TODO: rename this so that it makes sense.
-allOutside <- in.poly(  polyStd, boundingBox)
-# only look at polygonal if at least one point is inside the bounding box
-# note that integrals with basis function support outside of the
-# polygon are skipped and by defualt set to zero
-
-
-
-#base for loop
+#base for loop test how to construct the correct data object
 for (j in 1:N1) {
   # loop over the polygon regions (This could be parallelized using a foreach constuct. )
   polyTmp <- (polyGroups)[[j]]
@@ -238,4 +212,109 @@ for (j in 1:N1) {
     }
   }
 }
+    
+obj<- list( ind= cbind( J,K), ra= integral, 
+                da= c( N1,N2))
 
+X <- spind2spam(obj)
+
+#---test-----###
+
+#create empty df with columns for integrals, J, and K (where J and K are used in sparse)
+basisInt <- as.data.frame(matrix(ncol = 3))
+
+#cluster set-up
+n.cores <- cores
+
+my.cluster <- parallel::makeCluster(
+  n.cores, 
+  type = "PSOCK"
+)
+
+doParallel::registerDoParallel(cl = my.cluster)
+
+#TODO: fix the the combine method and correct output
+basisInt <- foreach(j = 1:N1, .combine=rbind) %dopar% {
+  polyTmp <- polyGroups[[j]]
+  
+  integrals <- as.data.frame(matrix(ncol = 3))
+  for (l in 1:nLevel) {
+    # get info for the L^th level of the multi-resolution basis. 
+    basisIndex <-(1:LKinfo$latticeInfo$mLevel[l])
+    basisOffset <- LKinfo$latticeInfo$offset[l]
+    basisScale <- LKinfo$latticeInfo$delta[l]*LKinfo$basisInfo$overlap
+    basisGridList <- LKinfo$latticeInfo$grid[[l]]
+    basisCenters <- fields::make.surface.grid(basisGridList) #requires fields
+    
+    for (k in basisIndex){
+      # k is position at the L^th level
+      polyStd <-
+        cbind((polyTmp[ ,1] - basisCenters[k, 1]) / basisScale,
+              (polyTmp[ ,2] - basisCenters[k, 2]) / basisScale)
+      # points in the region
+      
+      allOutside<- fields::in.poly(  polyStd, boundingBox)
+      # only look at polygonal if at least one point is inside the bounding box
+      # note that integrals with basis function support outside of the
+      # polygon are skipped and by defualt set to zero
+      
+      if(sum(allOutside) > 0 ){
+        inside <- fields::in.poly.grid(gridList, polyStd)
+        if (sum(inside) > 0) {
+          # note basisScale factor has to be added because this sum is
+          # over the  standard basis functions with  scale  1.0
+          tmpIntegral <- sum(zGrid[inside])  * dx * dy * basisScale ^ 2
+          # accumulate sparse matrix information
+          tempbasis_df <- c(tmpIntegral, j,  k + basisOffset)
+          # offset adjusts for preceding levels. 
+          integrals <- rbind(integrals, tempbasis_df)
+          }
+        }
+    
+    }
+  }
+  integrals[-1, ]
+}
+
+parallel::stopCluster(cl = my.cluster)
+
+colnames(basisInt) <- c("int", "J", "K")
+
+#now are they the same as for loop?
+int2 <- basisInt$int
+J2 <- basisInt$J
+K2 <- basisInt$K
+
+test.for.zero(int2, integral)
+test.for.zero(J2, J)
+test.for.zero(K2, K)
+
+
+###-------------####
+#test with new function:
+
+
+#set up Lkinfo: (normalize must be false)
+sDomain <- sDomain<- rbind( c( -1,-1),
+                            c( 1,2))
+
+#look up alpha (setting nu as 1 instead)
+LKinfo <- LKrigSetup(sDomain, NC=25, nlevel=2, a.wght = 4.1,
+                     NC.buffer = 0, normalize = FALSE, nu = 1)
+#check alpha setup for multiple levels, missing alpha specification
+##see paper for more details on alpha selection.
+
+M = 200
+
+source("DF_LK/R/basisIntegralNew.R")
+source("DF_LK/R/basisIntegral.R")
+
+library(tictoc)
+
+tic()
+X <- basisIntegral(polyGroups, LKinfo, M = 200)
+toc()
+
+tic()
+X <- basisIntegralForEach(polyGroups, LKinfo, M = 200, cores= 8)
+toc()
