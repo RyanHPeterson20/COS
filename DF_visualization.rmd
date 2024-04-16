@@ -1,0 +1,135 @@
+---
+title: "DF_visulizations"
+author: "Ryan Peterson"
+date: "2024-03-29"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+```
+
+
+```{r data_import}
+load("~/COS_LK/DF_predictions.rda")
+load("~/COS_LK/DF_matrices.rda")
+
+source("~/COS_LK/COSExample/R/LatticeKrig.R")
+source("~/COS_LK/COSExample/R/LKrigFindLambda.R")
+source("~/COS_LK/COSExample/R/print.LatticeKrig.R" )
+```
+
+
+```{r}
+sDomain <- sDomain<- rbind( c( -1,-1),
+                            c( 1,2))
+```
+
+
+```{r plot_base_data}
+#plot true surface and samples
+range(newobsRandomBig)
+range(newobsRandomBig_2)
+yobs_lim <- c(min(newobsRandomBig, newobsRandomBig_2), 
+              max(newobsRandomBig, newobsRandomBig_2))
+
+
+set.panel(1,3)
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=turbo(256))
+title(expression(True~Surface))
+
+
+N<- length(newpolyGroupsBig)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(newobsRandomBig, cScale, zlim = yobs_lim)
+plot( sDomain, type="n",  axes = FALSE,
+      xlab = "x", ylab = "y", main = expression(Dataset~1~z[1](B[1])))
+axis(1)
+axis(2, las =1)
+for ( k in 1:N){
+  polyTmp<- newpolyGroupsBig[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA )
+}
+
+
+N<- length(newpolyGroupsBig_2)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(newobsRandomBig_2, cScale, zlim = yobs_lim)
+
+plot( sDomain, type="n",  axes = FALSE,
+      xlab = "x", ylab = "y", main = expression(Dataset~2~z[2](B[2])))
+axis(1)
+axis(2, las =1)
+for ( k in 1:N){
+  polyTmp<- newpolyGroupsBig_2[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA )
+}
+```
+
+```{r}
+fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
+fhat_2 <- predictSurface(fit2, nx = 100, ny = 100)
+fhat_f <- predictSurface(fit_F, nx = 100, ny = 100)
+
+
+set.panel(1,3)
+
+imagePlot(fhat_1,
+      xlab = "X", ylab = "Y", main = "Dataset 1 Predicted Surface", 
+      zlim = zlim,  col=turbo(256))
+imagePlot(fhat_2,
+      xlab = "X", ylab = "Y", main = "Dataset 2 Predicted Surface", 
+      zlim = zlim, col=turbo(256))
+imagePlot(fhat_f,
+      xlab = "X", ylab = "Y", main = "Data Fusion Predicted Surface", 
+      zlim = zlim, col=turbo(256))
+```
+
+
+```{r predicted_field}
+#plot predictions of each data set and fusion
+
+
+zlim<- c(-5, max(gTrue))
+surface(as.surface( gridTrue, gTrue) , 
+        zlim =zlim, col=turbo(256))
+title("True Surface")
+
+
+set.panel(1,3)
+surface( fit1, zlim =zlim, col=turbo(256))
+title("Prediction from Dataset 1")
+
+surface( fit2, zlim =zlim, col=turbo(256))
+title("Prediction from Dataset 2")
+
+surface( fit_F, zlim =zlim, col=turbo(256))
+title("Prediction from Data Fusion")
+```
+
+```{r prediction_se}
+#plot prediction set of each data set and fusion
+
+se_lim <- c(min(simOut1$SE, simOut2$SE, simOut_F$SE),
+            max(simOut1$SE, simOut2$SE, simOut_F$SE))
+
+set.panel(1,3)
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE), zlim = se_lim,
+          xlab = "X", ylab = "Y")
+title("Prediction SE Dataset 1")
+
+imagePlot(as.surface(simOut2$x.grid, simOut2$SE), zlim = se_lim,
+          xlab = "X", ylab = "Y")
+title("Prediction SE Dataset 2")
+
+imagePlot(as.surface(simOut_F$x.grid,simOut_F$SE), zlim = se_lim,
+          xlab = "X", ylab = "Y")
+title("Prediction SE Data Fusion")
+```
+

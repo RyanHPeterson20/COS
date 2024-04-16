@@ -1,0 +1,178 @@
+---
+title: "cosp_normalize.Rmd"
+author: "Ryan Peterson"
+date: "2024-04-09"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r libraries}
+suppressMessages(library(LatticeKrig))
+```
+
+
+```{r test_data}
+setwd("~/COS_LK")
+load("DF_LK/DFSynthData_Base.rda")
+
+#TODO: create new synthetic data and import here:
+## needs non-overlapping polyGroups and convex n-gons.
+```
+
+Work in Progress for updates to basisIntegral.R function
+
+Updates include:
+- Incorporate Normalization of the basis functions.
+-- interpolate from the full domain down to the subset. 
+- Choosing a subset of the domain around a "central" basis function.
+- Replace the zGrid with the "central" basis function evaluated at integration pts. 
+
+
+Fixes needed elsewhere:
+- DF_Synthetic.Rmd: Change the domain to (-2,2) x (-2,2)
+-- create a new surface to reflect the new domain.
+-- create new file for this
+-- Create convex n-gons from varonoi tesselations (see USGS code)
+
+```{r set up}
+#set up Lkinfo: (testing for normalize = TRUE)
+M = 200
+
+sDomain<- rbind( c( -1,-2), c( 2,1))
+gridDomain <- list(x = seq(-1, 2, length.out = M),
+                 y = seq(-2, 1, length.out = M))
+domain_grid <- make.surface.grid(gridDomain)
+
+#look up alpha (setting nu as 1 instead)
+#a.wght = 4.01 is approx. TPS
+#normalize = FALSE while we implement normalization
+LKinfo <- LKrigSetup(sDomain, NC=15, nlevel=1, a.wght = 4.01,
+                     NC.buffer = 0, normalize = FALSE, nu = 1)
+
+nLevel <- LKinfo$nlevel
+```
+
+Below section
+
+```{r bais_function_setup}
+
+#fix this section to reflect our new choice of a basis function that exists from Lkrig.basis
+
+reducedDomain <- rbind( c( -1,-1), c( 1,1))
+gridList <- list(x = seq(-1, 1, length.out = M),
+                 y = seq(-1, 1, length.out = M))
+
+xyGrid <- make.surface.grid(gridList)
+
+boundingBox<- rbind( c( -1,-1),
+                     c( 1,-1),
+                     c( 1,1),
+                     c( -1, 1),
+                     c( -1,-1))
+
+dx<- gridList$x[2]- gridList$x[1]
+dy<- gridList$y[2]- gridList$y[1]
+
+zGrid <- Wendland(sqrt(xyGrid[, 1] ^ 2 + xyGrid[, 2] ^ 2),
+                  dimension = 2,
+                  k = 2)
+
+stdIntegral<- sum( zGrid)*dx*dy
+```
+
+Normalization section
+
+```{r normalization}
+#rewrite a combination of the next 2 blocks
+
+#directly from LKrig.basis
+
+l = 1 #add for l in 1:nlevel loop
+basis.delta <- LKrigLatticeScales(LKinfo) 
+centers <- LKrigLatticeCenters( LKinfo, Level=l ) 
+PHItemp <- Radial.basis(  domain_grid, centers, basis.delta[l],
+                          max.points = LKinfo$basisInfo$max.points,
+                          mean.neighbor = LKinfo$basisInfo$mean.neighbor, 
+                          BasisFunction = get(LKinfo$basisInfo$BasisFunction),
+                          distance.type = LKinfo$distance.type,
+                          verbose = FALSE)
+
+
+
+
+test_wght <- LKrigNormalizeBasis(LKinfo,  Level=l, PHItemp)   #working at the moment
+
+test_normalize <- 1/sqrt(test_wght)
+
+test_wght_fast <- LKrigNormalizeBasisFast(LKinfo,  Level=1,  x=xyGrid)  
+
+test_normalize_fast <- 1/sqrt(test_wght_fast)
+
+#convert normalize to wght_matrix
+wght_matrix <- matrix(unlist(test_normalize), nrow = 200, byrow = TRUE)
+```
+
+
+
+```{r interp_normalize}
+length(domain_grid[,1])
+
+wght_list <- list(x = gridDomain$x, y= gridDomain$y, z= wght_matrix)
+
+imagePlot(wght_list)
+L <- 1
+
+basisIndex <- (1:LKinfo$latticeInfo$mLevel[L])
+basisOffset <- LKinfo$latticeInfo$offset[L]
+basisScale <- LKinfo$latticeInfo$delta[L]*LKinfo$basisInfo$overlap
+basisGridList <- LKinfo$latticeInfo$grid[[L]]
+basisCenters <- make.surface.grid(basisGridList)
+
+for (k in basisIndex) {
+  x_std <- cbind((wght_list$x - basisCenters[k, 1]) / basisScale)
+  y_std <- cbind((wght_list$y - basisCenters[k, 2]) / basisScale)
+}
+
+wght_new <- list(x = x_std[,1],
+                 y = y_std[,1],
+                 z = wght_list$z)
+
+#why are we getting NAs?
+wght_interp <- interp.surface.grid(wght_new, gridList)
+wght_interp$z
+
+image.plot(wght_interp)
+
+range(wght_new$y)
+range(wght_new$x)
+image.plot(wght_new)
+image( wght_interp, col=viridis(256), zlim=range( c( wght_matrix), na.rm=TRUE), add=TRUE)
+```
+
+```{r testing_NA}
+length(wght_list$x)
+length(basisCenters[,1])
+temp_x <- wght_list$x
+
+for (k in basisIndex) {
+  x_std <- cbind((wght_list$x - basisCenters[k, 1]) / basisScale)
+  y_std <- cbind((wght_list$y - basisCenters[k, 2]) / basisScale)
+}
+
+
+#this aligns with basisCenters
+test_centers <- make.surface.grid(centers)
+test.for.zero(test_centers, basisCenters)
+#x_std[,1]
+#(wght_list$x - basisCenters[1])/basisScale
+```
+
+
+
+```{r basis_viz}
+
+```
+
