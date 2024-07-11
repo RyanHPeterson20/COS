@@ -37,14 +37,53 @@ Fixes needed elsewhere:
 -- create new file for this
 -- Create convex n-gons from varonoi tesselations (see USGS code)
 
+
+# Test Section
+
+(from other code)
+
+```{r}
+
+w<- list( x= (1:10)/5, y=(1:15)/4)
+
+w$z<- outer( 1:10, 1:15, FUN="+")
+
+Center<- c( 1.5,2.5)
+Scale<- .4
+
+wNew<- list( x= (w$x - Center[1])/Scale,
+             y= (w$y - Center[2])/Scale,
+             z= w$z)
+
+basisGrid<- list( x= seq(-1,1,,200), y=seq(-1,1,,200) )
+
+wInterp<- interp.surface.grid(wNew, basisGrid)
+
+imagePlot( w)
+
+imagePlot( wNew)
+image( wInterp, col=tim.colors(), zlim=range( c( w$z), na.rm=TRUE), add=TRUE)
+
+imagePlot( wInterp)
+
+```
+
+
 ```{r set up}
 #set up Lkinfo: (testing for normalize = TRUE)
 M = 200
 
-sDomain<- rbind( c( -1,-2), c( 2,1))
-gridDomain <- list(x = seq(-1, 2, length.out = M),
-                 y = seq(-2, 1, length.out = M))
+sDomain<- rbind( c( -2,-2), c( 2, 2))
+gridDomain <- list(x = seq(-2, 2, length.out = M),
+                 y = seq(-2, 2, length.out = M))
 domain_grid <- make.surface.grid(gridDomain)
+
+#TODO: add in data? Maybe
+
+plot(domain_grid, pch = 20, cex = 0.25)
+rect(0, 0, 0.5, 0.5, border = "magenta", lwd = 3)
+
+plot(domain_grid, pch = 20, xlim = c(0,0.5), ylim = c(0, 0.5))
 
 #look up alpha (setting nu as 1 instead)
 #a.wght = 4.01 is approx. TPS
@@ -80,7 +119,18 @@ zGrid <- Wendland(sqrt(xyGrid[, 1] ^ 2 + xyGrid[, 2] ^ 2),
                   dimension = 2,
                   k = 2)
 
-stdIntegral<- sum( zGrid)*dx*dy
+stdIntegral <- sum( zGrid)*dx*dy
+
+#remove zeros from zGrid, 
+
+which_z <- which(zGrid != 0)
+
+temp_xyGrid <- xyGrid[which_z,]
+temp_zGrid <- zGrid[which_z]
+
+imagePlot(xyGrid, zGrid)
+bubblePlot(xyGrid, zGrid, highlight = FALSE)
+bubblePlot(temp_xyGrid, temp_zGrid, highlight = FALSE, col = tim.colors) #nonzero
 ```
 
 Normalization section
@@ -88,7 +138,7 @@ Normalization section
 ```{r normalization}
 #rewrite a combination of the next 2 blocks
 
-#directly from LKrig.basis
+#directly from LKrig.basis and LKrigMarginalVariance.R
 
 l = 1 #add for l in 1:nlevel loop
 basis.delta <- LKrigLatticeScales(LKinfo) 
@@ -103,6 +153,8 @@ PHItemp <- Radial.basis(  domain_grid, centers, basis.delta[l],
 
 
 
+plot(make.surface.grid(centers), pch =20)
+
 test_wght <- LKrigNormalizeBasis(LKinfo,  Level=l, PHItemp)   #working at the moment
 
 test_normalize <- 1/sqrt(test_wght)
@@ -113,6 +165,12 @@ test_normalize_fast <- 1/sqrt(test_wght_fast)
 
 #convert normalize to wght_matrix
 wght_matrix <- matrix(unlist(test_normalize), nrow = 200, byrow = TRUE)
+
+
+#plot the weight matrix 
+bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors)
+rect(1.5, 1.5, 2, 2, border = "magenta", lwd = 3)
+bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors, xlim = c(1.5,2), ylim = c(1.5, 2))
 ```
 
 
@@ -121,6 +179,8 @@ wght_matrix <- matrix(unlist(test_normalize), nrow = 200, byrow = TRUE)
 length(domain_grid[,1])
 
 wght_list <- list(x = gridDomain$x, y= gridDomain$y, z= wght_matrix)
+
+
 
 imagePlot(wght_list)
 L <- 1
@@ -173,6 +233,6 @@ test.for.zero(test_centers, basisCenters)
 
 
 ```{r basis_viz}
-
+image.plot(wght_matrix)
 ```
 
