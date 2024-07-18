@@ -11,6 +11,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r libraries}
 suppressMessages(library(LatticeKrig))
+
+suppressMessages(library( scales))
 ```
 
 
@@ -18,8 +20,7 @@ suppressMessages(library(LatticeKrig))
 setwd("~/COS_LK")
 load("DF_LK/DFSynthData_Base.rda")
 
-#TODO: create new synthetic data and import here:
-## needs non-overlapping polyGroups and convex n-gons.
+## needs non-overlapping polyGroups and convex n-gons. Included in load data.
 ```
 
 Work in Progress for updates to basisIntegral.R function
@@ -72,6 +73,7 @@ imagePlot( wInterp)
 ```{r set up}
 #set up Lkinfo: (testing for normalize = TRUE)
 M = 200
+test_Z <- outer(1:200, 1:200,  FUN="-")
 
 sDomain<- rbind( c( -2,-2), c( 2, 2))
 gridDomain <- list(x = seq(-2, 2, length.out = M),
@@ -92,6 +94,12 @@ LKinfo <- LKrigSetup(sDomain, NC=15, nlevel=1, a.wght = 4.01,
                      NC.buffer = 0, normalize = FALSE, nu = 1)
 
 nLevel <- LKinfo$nlevel
+
+
+#TODO: plot the new data (test_Z)
+gridDomain$z <- test_Z
+
+imagePlot(gridDomain)
 ```
 
 Below section
@@ -128,7 +136,6 @@ which_z <- which(zGrid != 0)
 temp_xyGrid <- xyGrid[which_z,]
 temp_zGrid <- zGrid[which_z]
 
-imagePlot(xyGrid, zGrid)
 bubblePlot(xyGrid, zGrid, highlight = FALSE)
 bubblePlot(temp_xyGrid, temp_zGrid, highlight = FALSE, col = tim.colors) #nonzero
 ```
@@ -138,7 +145,8 @@ Normalization section
 ```{r normalization}
 #rewrite a combination of the next 2 blocks
 
-#directly from LKrig.basis and LKrigMarginalVariance.R
+#directly from LKrig.basis and LKrigMarginalVariance.
+
 
 l = 1 #add for l in 1:nlevel loop
 basis.delta <- LKrigLatticeScales(LKinfo) 
@@ -168,11 +176,257 @@ wght_matrix <- matrix(unlist(test_normalize), nrow = 200, byrow = TRUE)
 
 
 #plot the weight matrix 
-bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors)
+bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors, main = "Normalized Field") #check on title if we use this
 rect(1.5, 1.5, 2, 2, border = "magenta", lwd = 3)
 bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors, xlim = c(1.5,2), ylim = c(1.5, 2))
 ```
 
+# Basis Integral (Polygons)
+
+Create some visualization for how the shifts used in `basisIntegral` functions. 
+- Use the regular grid data for this. 
+- Then see if we can adapt the normalization procedure to this. 
+
+```{r polyGroups_setup}
+#and viz
+M <- 100
+sDomain <- rbind( c( -1,-1),
+                 c( 1,2))
+
+gridDomain <- list(x = seq(-1, 1, length.out = M),
+                 y = seq(-1, 2, length.out = M))
+domain_grid <- make.surface.grid(gridDomain)
+
+
+#repeat setup from example but with the domain for polyGroups
+LKinfo2 <- LKrigSetup(sDomain, NC=15, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 0, normalize = FALSE, nu = 1)
+
+N<- length(polyGroups)
+cScale<- alpha(turbo(256),.5)
+cTab<- color.scale(yObs_base, cScale)
+layout<-setupLegend()
+plot( sDomain, type="n")
+for ( k in 1:N){
+  polyTmp<- polyGroups[[k]]
+  polygon(polyTmp, col=cTab[k], border="black", lwd=.2)
+}
+```
+
+
+```{r polyIntegral_normal}
+
+```
+
+
+
+```{r}
+#TODO: recreate some of the basis Integral function
+#basisIntegralForEach( newpolyGroupsBig, LKinfo, M = 400, cores = 8)
+
+#params:
+## polyGroups and Lkinfo2
+#using smaller M value
+
+#from basisIntegral:
+
+M <- 100 #make smaller if need be (default is 200) 
+
+gridList2 <- list(x = seq(-1, 1, length.out = M),
+                   y = seq(-1, 1, length.out = M))
+
+boundingBox<- rbind( c( -1,-1),
+                       c( 1,-1),
+                       c( 1,1),
+                       c( -1, 1),
+                       c( -1,-1))
+
+new_grid <- make.surface.grid(gridList2) #same as xyGrid below
+
+#plot the new grid, compared to the sDomain
+plot(sDomain, type = "n")
+points(new_grid, pch = 20)
+rect(-1, -1, 1, 1, border = "magenta", lwd = 1.5)
+
+
+
+# setup standard integral
+dx<- gridList2$x[2]- gridList2$x[1]
+dy<- gridList2$y[2]- gridList2$y[1]
+# integral for standard basis function.
+xyGrid <- make.surface.grid(gridList2)
+# values for the standard basis function on the grid
+zGrid <- Wendland(sqrt(xyGrid[, 1] ^ 2 + xyGrid[, 2] ^ 2),
+                    dimension = 2,
+                    k = 2)
+stdIntegral<- sum( zGrid)*dx*dy
+
+
+nLevel <- LKinfo2$nlevel #1 for this LKInfo
+N1 <- length(polyGroups)
+# total number of basis functions
+N2 <- LKinfo2$latticeInfo$m
+# basis function scales
+delta <- LKinfo2$latticeInfo$delta
+
+#is this part needed??
+integral <- NULL
+J <- NULL
+K <- NULL
+
+
+#for (j in 1:N1) 
+j <- 1
+polyTmp <- (polyGroups)[[j]]
+
+
+#for (L in 1:nLevel)
+# get info for the L^th level of the multi-resolution basis. 
+L <- 1
+basisIndex <- (1:LKinfo2$latticeInfo$mLevel[L])
+basisOffset<- LKinfo2$latticeInfo$offset[L]
+basisScale <- LKinfo2$latticeInfo$delta[L]*LKinfo2$basisInfo$overlap
+basisGridList <- LKinfo2$latticeInfo$grid[[L]]
+basisCenters <- make.surface.grid(basisGridList)
+
+#for (k in basisIndex)
+inc_basis <- c(1:3, 11:13, 21:23)
+#k <- 2
+plot(sDomain, type = "n", xlim = c(-3.65, 1), ylim = c(-5.65, 2))
+polygon(polyTmp, col="orange", border="black", lwd=.2)
+rect(-1, -1, 1, 1, border = "magenta", lwd = 1.5)
+rect(-1,-1,1,2, border = "darkblue", lwd = 1.5)
+#standardize polygons
+temp_std <- NULL
+for (i in inc_basis) {
+  k <- basisIndex[i]
+  polyStd <- cbind((polyTmp[, 1] - basisCenters[k, 1]) / basisScale,
+              (polyTmp[, 2] - basisCenters[k, 2]) / basisScale)
+  temp_std <- c(temp_std, list(polyStd))
+  polygon(polyStd, col=cTab[j], border="black", lwd=.2)
+}
+
+
+k <- 1
+x_test <- c(basisCenters[k, 1], 0, basisCenters[2, 1], basisCenters[3, 1])
+y_test <- c(basisCenters[k, 2], 0, basisCenters[2, 2], basisCenters[3, 2])
+
+polyStd <- cbind((polyTmp[, 1] - basisCenters[k, 1]) / basisScale,
+              (polyTmp[, 2] - basisCenters[k, 2]) / basisScale)
+
+polyStd2 <- cbind((polyTmp[, 1] - basisCenters[2, 1]) / basisScale,
+              (polyTmp[, 2] - basisCenters[2, 2]) / basisScale)
+
+polyStd3 <- cbind((polyTmp[, 1] - basisCenters[3, 1]) / basisScale,
+              (polyTmp[, 2] - basisCenters[3, 2]) / basisScale)
+
+plot(sDomain, type = "n")
+points(x_test, y_test, pch = 20)
+rect(-1, -1, 1, 1, border = "magenta", lwd = 1.5)
+polygon(polyTmp, col="orange", border="black", lwd=.2)
+polygon(polyStd, col=cTab[j], border="black", lwd=.2)
+polygon(polyStd2, col=cTab[j+2], border="black", lwd=.2)
+polygon(polyStd3, col=cTab[j+4], border="black", lwd=.2)
+
+
+
+allOutside<- in.poly(  polyStd, boundingBox)
+
+inside <- in.poly.grid(gridList2, polyStd2)
+
+sum(inside)
+sum(zGrid[inside])  * dx * dy * basisScale ^ 2
+
+zGrid[inside]
+xyGrid[inside, 1]
+xyGrid[inside, 2]
+
+plot(xyGrid[inside, 1], xyGrid[inside, 2], pch = 20, xlim = c(0, 0.12), ylim  = c(0, 0.18))
+polygon(polyStd, col=cTab[j], border="black", lwd=.2)
+
+bubblePlot(xyGrid[inside, 1], xyGrid[inside, 2], zGrid[inside], col = tim.colors, zlim = c(0,1))
+
+
+#TODO check on estimation comparison between integration points
+
+
+```
+
+
+```{r normaliation_data}
+l = 1 #add for l in 1:nlevel loop
+basis.delta <- LKrigLatticeScales(LKinfo2) 
+centers <- LKrigLatticeCenters( LKinfo2, Level=l ) 
+PHItemp <- Radial.basis(  domain_grid, centers, basis.delta[l],
+                          max.points = LKinfo2$basisInfo$max.points,
+                          mean.neighbor = LKinfo2$basisInfo$mean.neighbor, 
+                          BasisFunction = get(LKinfo2$basisInfo$BasisFunction),
+                          distance.type = LKinfo2$distance.type,
+                          verbose = FALSE)
+
+plot(make.surface.grid(centers), pch =20)
+
+test_wght <- LKrigNormalizeBasis(LKinfo2,  Level=l, PHItemp)   #working at the moment
+
+test_normalize <-  1/sqrt(test_wght)
+
+
+#convert normalize to wght_matrix
+wght_matrix <- matrix(unlist(test_normalize), nrow = M, byrow = TRUE)
+
+
+#plot the weight matrix 
+bubblePlot(domain_grid, wght_matrix, highlight = FALSE, col = tim.colors, main = "Normalization Field")
+
+#imagePlot(gridDomain[,1], gridDomain[,2], test_normalize)
+
+```
+
+```{r lkrig.basis}
+
+
+```
+
+
+```{r test_normalization}
+#TODO: apply normalization to basis integration 
+
+wght_list <- list(x = gridDomain$x, y= gridDomain$y, z= wght_matrix)
+imagePlot(wght_list, main = "Normalization Weight Field")
+
+L <- 1
+
+basisIndex <- (1:LKinfo2$latticeInfo$mLevel[L])
+basisOffset <- LKinfo2$latticeInfo$offset[L]
+basisScale <- LKinfo2$latticeInfo$delta[L]*LKinfo2$basisInfo$overlap
+basisGridList <- LKinfo2$latticeInfo$grid[[L]]
+basisCenters <- make.surface.grid(basisGridList)
+
+k <- 2
+#for (k in basisIndex)
+x_std <- cbind((wght_list$x - basisCenters[k, 1]) / basisScale)
+y_std <- cbind((wght_list$y - basisCenters[k, 2]) / basisScale)
+
+wght_new <- list(x = x_std[,1],
+                 y = y_std[,1],
+                 z = wght_list$z)
+image.plot(wght_new)
+
+#interp onto the integration point grid
+wght_interp <- interp.surface.grid(wght_new, gridList2)
+
+temp_x <- wght_interp$x
+temp_y <- wght_interp$y
+temp_z <- wght_interp$z
+
+image.plot(wght_interp, xlim = c(-1,1), ylim = c(-1,1))
+polygon(polyStd2, col=cTab[j+2], border="black", lwd=.2) #for  k =2
+#polygon(polyStd, col=cTab[j], border="black", lwd=.2) #for k =1
+
+bubblePlot(wght_interp[inside, 1], wght_interp[inside, 2], wght_interp[inside, 3], 
+           col = tim.colors, zlim = c(0.75,2))
+
+```
 
 
 ```{r interp_normalize}
@@ -191,25 +445,32 @@ basisScale <- LKinfo$latticeInfo$delta[L]*LKinfo$basisInfo$overlap
 basisGridList <- LKinfo$latticeInfo$grid[[L]]
 basisCenters <- make.surface.grid(basisGridList)
 
-for (k in basisIndex) {
-  x_std <- cbind((wght_list$x - basisCenters[k, 1]) / basisScale)
-  y_std <- cbind((wght_list$y - basisCenters[k, 2]) / basisScale)
-}
+#check on 
+k <- 85
+#for (k in basisIndex)
+x_std <- cbind((wght_list$x - basisCenters[k, 1]) / basisScale)
+y_std <- cbind((wght_list$y - basisCenters[k, 2]) / basisScale)
 
 wght_new <- list(x = x_std[,1],
                  y = y_std[,1],
                  z = wght_list$z)
 
 #why are we getting NAs?
+image.plot(wght_new)
+
 wght_interp <- interp.surface.grid(wght_new, gridList)
 wght_interp$z
 
-image.plot(wght_interp)
+image.plot(wght_interp, xlim = c(-1,1), ylim = c(-1,1))
 
 range(wght_new$y)
 range(wght_new$x)
 image.plot(wght_new)
 image( wght_interp, col=viridis(256), zlim=range( c( wght_matrix), na.rm=TRUE), add=TRUE)
+
+image.plot(wght_interp)
+
+
 ```
 
 ```{r testing_NA}
