@@ -209,6 +209,56 @@ checkIntegral<- NULL # stays NULL if check == FALSE
 
 # Test Blocks
 
+
+## Comparison Pred SE and Normalization
+
+```{r}
+#point test data block
+setwd("~/COS_LK")
+load("DF_LK/ShakeMap.rda")
+
+#normalize = FALSE
+
+LKinfo <- LKrigSetup(s, NC=25, nlevel=2, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+fit1 <- LatticeKrig( s, z, LKinfo=LKinfo, findAwght=TRUE)
+
+fhat_1 <- predictSurface(fit1, nx = 50, ny = 50)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+#normalize = TRUE
+
+LKinfo2 <- LKrigSetup(s, NC=25, nlevel=2, a.wght = 4.1,
+                     NC.buffer = 2, normalize = TRUE, nu = 1)
+fit2 <- LatticeKrig( s, z, LKinfo=LKinfo2, findAwght=TRUE)
+
+fhat_2 <- predictSurface(fit2, nx = 50, ny = 50)
+
+simOut2<- LKrig.sim.conditional( fit2,  M=100) 
+
+#plots:
+
+fhat_lim <- c(-1, 0.6)
+
+set.panel(1,2)
+image.plot(fhat_1, zlim = fhat_lim, main = "Normalize = FALSE")
+US(add = TRUE)
+
+image.plot(fhat_2, zlim = fhat_lim, main = "Normalize = TRUE")
+US(add = TRUE)
+
+
+se_lim <- c(min(simOut1$SE, simOut2$SE), max(simOut1$SE, simOut2$SE))
+set.panel(1,2)
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE), zlim = se_lim, main = "Normalize = FALSE")
+US(add = TRUE)
+
+imagePlot(as.surface(simOut2$x.grid,simOut2$SE), zlim = se_lim, main = "Normalize = TRUE")
+US(add = TRUE)
+```
+
+
 ## Normalization
 
 ```{r}

@@ -9,6 +9,9 @@ suppressMessages(library(foreach))
 suppressMessages(library(parallel))
 suppressMessages(library(doParallel))
 
+#timing functions
+suppressMessages(library(tictoc))
+
 
 #load scripts for functions
 setwd("~/COS_LK")
@@ -33,8 +36,8 @@ sDomain <- sDomain<- rbind( c( -1,-1),
 
 #set up Lkinfo: (normalize must be false)
 #look up alpha (setting nu as 1 instead)
-LKinfo <- LKrigSetup(sDomain, NC=15, nlevel=1, a.wght = 4.1,
-                     NC.buffer = 0, normalize = FALSE, nu = 1)
+LKinfo <- LKrigSetup(sDomain, NC=25, nlevel=2, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
 
 #creates a couple functions
 FUNX<- function(s){
@@ -60,8 +63,15 @@ U_1<- cbind( U1,U2,U3) # U can be a dense matrix
 
 
 # integrals of basis functions
+tic()
 X_1<- basisIntegral_New( newpolyGroupsBig, LKinfo, M = 200, cores = 8, normalize = TRUE)
+toc()
 X_1<- spind2spam(X_1)
+
+#save above X_1 
+X_1test <- X_1
+
+save(X_1test, file = "normalize_basisTest.rda")
 
 # estimating lambda and the a.wght parameter
 fit1<- LatticeKrig( sDomain, newobsRandomBig, U=U_1, X=X_1, LKinfo=LKinfo,
@@ -109,8 +119,10 @@ set.panel(1,2)
 zlim<- range( gTrue)
 surface( fit1, zlim=zlim)
 title("Normalize = FALSE")
-imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+imagePlot(as.surface(simOut1$x.grid, simOut1$SE))
 title("Prediction SE")
 
-
+#comparison sections
+load("~/COS_LK/DF_predictions.rda")
+load("~/COS_LK/DF_matrices.rda")
 
