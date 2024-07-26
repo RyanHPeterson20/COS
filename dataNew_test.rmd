@@ -1,0 +1,560 @@
+---
+title: "dataNew_test.rmd"
+author: "Ryan Peterson"
+date: "2024-07-21"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r libraries}
+#libraries
+suppressMessages(library(LatticeKrig))
+
+#parallel librarues
+suppressMessages(library(foreach))
+suppressMessages(library(parallel))
+suppressMessages(library(doParallel))
+
+#color
+suppressMessages(library(grDevices))
+
+#timing library
+suppressMessages(library(bench))
+suppressMessages(library(tictoc))
+```
+
+
+```{r functionload}
+setwd("~/COS_LK")
+
+source("COSExample/R/basisIntegral.R")
+source("COSExample/R/integralPolyFunction.R")
+# patch in newer version of LK functions
+source("COSExample/R/LatticeKrig.R")
+source("COSExample/R/LKrigFindLambda.R")
+source("COSExample/R/print.LatticeKrig.R" )
+# patch in updates to integral functions
+source("DF_LK/R/basisIntegralNew.R")
+source("DF_LK/R/integralPolyFunctionNew.R")
+```
+
+
+```{r dataload}
+load("trop_data_aus.rda")
+
+load("mop_data_aus.rda")
+
+load("reduced_trop.rda")
+
+load("reduced_mop.rda")
+```
+
+
+```{r red_viz}
+reduced_domain <- rbind(c(142,-38), 
+                        c(152,-33))
+
+#trop
+colors_trop <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red",
+                             "#7F0000"))(length(co_tropRed))
+
+colors_trop <- colors_trop[rank(co_tropRed)]
+
+color_mop <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red",
+                             "#7F0000"))(length(co_mopRed))
+
+color_mop <- color_mop[rank(co_mopRed)]
+
+
+set.panel(1,2)
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in seq_along(polyGroup_tropRed)) {
+  polygon(polyGroup_tropRed[[k]], col=colors_trop[k], border=NA)
+}
+world(add = TRUE, lwd = 2)
+
+
+#mop
+
+
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "MOPITT - Total Column CO")
+for ( k in seq_along(polyGroups_mopRed)) {
+  polygon(polyGroups_mopRed[[k]], col=color_mop[k], border=NA)
+}
+world(add = TRUE, lwd = 2)
+
+```
+
+```{r repeat_test_trop}
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroup_trop, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroup_trop,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroup_trop,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+tic()
+X_1<- basisIntegral_New( polyGroup_trop, LKinfo, M = 100, cores = 8, normalize = FALSE)
+toc()
+X_1<- spind2spam(X_1)
+
+tic()
+fit1<- LatticeKrig( reduced_domain, convert_co_trop, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+
+fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+world(add = TRUE, lwd = 2)
+
+save(X_1, file= "basis_big_real.rda")
+
+X_1Trop <- X_1
+save(X_1Trop, file = "basis_trop_backup.rda")
+```
+
+```{r mop_retest}
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroups_mop, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_2<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+tic()
+X_2<- basisIntegral_New( polyGroups_mop, LKinfo, M = 100, cores = 8, normalize = FALSE)
+toc()
+X_2<- spind2spam(X_2)
+
+tic()
+fit2<- LatticeKrig( reduced_domain, mop1_col, U=U_2, X=X_2, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+
+fhat_2 <- predictSurface(fit2, nx = 100, ny = 100)
+
+#TODO fix issue with this fit2 and the dip around ne tas
+surface(fit2) 
+
+simOut2<- LKrig.sim.conditional( fit2,  M=100) 
+
+
+image.plot(fhat_2, main = "MOPITT")
+world(add = TRUE, lwd = 2)
+
+
+imagePlot(as.surface(simOut2$x.grid,simOut2$SE))
+world(add = TRUE, lwd = 2)
+
+
+
+X_2mop <- X_2
+save(X_2mop, file = "basis_mop_backup.rda")
+```
+
+
+```{r fuse}
+#without correction (dip in mopitt for some wierd reason)
+#Base DF with LatticeKrig
+U_F <- rbind(U_1, U_2)
+
+#create new matrix X_F
+X_F <- rbind(X_1, X_2)
+
+
+y_full <- append(convert_co_trop, mop1_col)
+
+# estimating lambda and the a.wght parameter
+tic()
+fit_F<- LatticeKrig( reduced_domain, y_full, U=U_F, X=X_F, LKinfo=LKinfo,
+                     findAwght=TRUE)
+toc()
+
+fhat_F <- predictSurface(fit_F, nx = 100, ny = 100)
+
+#TODO fix issue with this fit2 and the dip around ne tas
+surface(fit_F) 
+
+image.plot(fhat_F)
+world(add = TRUE, lwd = 2)
+
+simOutF<- LKrig.sim.conditional( fit_F,  M=100) 
+
+imagePlot(as.surface(simOutF$x.grid,simOutF$SE))
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r plots}
+se_lim <- c()
+co_lom <- c(0, max(fhat_1$z, ))
+fhat_1$z
+max(!is.na(fhat_1$z, fhat_2$z, fhat_F$z))
+```
+
+
+```{r}
+##VIS test
+#jet color pallet
+colors_mop <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))(length(mop1_col))
+
+colors_mop <- colors_mop[rank(mop1_col)]
+#polyNew <- polyGroups[[rank(col_co)]]
+
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "MOPITT - Total Column CO")
+for ( k in seq_along(polyGroups_mop)) {
+  polygon(polyGroups_mop[[k]], col=colors_mop[k], border=NA)
+}
+world(add = TRUE, lwd = 2)
+
+```
+
+
+```{r full_reduced}
+##VIS test
+#jet color pallet
+colors <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))(length(col_co))
+
+colors <- colors[rank(col_co)]
+#polyNew <- polyGroups[[rank(col_co)]]
+
+#delete when fixed
+reduced_domain <- rbind(c(140,-48), 
+                        c(158,-10))
+
+
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in seq_along(polyGroups)) {
+  polygon(polyGroups[[k]], col=colors[k], border=NA)
+}
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r reducedomain_plot}
+polyGroups_new <- polyGroups[14001:21000]
+col_co_new <- col_co[14001:21000]
+
+
+##VIS test
+#jet color pallet
+colors <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))(length(col_co_new))
+
+colors <- colors[rank(col_co_new)]
+#polyNew <- polyGroups[[rank(col_co)]]
+
+#delete when fixed
+#reduced_domain <- rbind(c(140,-48), 
+#                        c(158,-10))
+
+#delete when fixed
+reduced_domain <- rbind(c(140,-38), 
+                        c(152,-33))
+
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in seq_along(polyGroups_new)) {
+  polygon(polyGroups_new[[k]], col=colors[k], border=NA)
+}
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r setup}
+LKinfo <- LKrigSetup(reduced_domain, NC=25, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+```
+
+
+```{r fixed_effects}
+tic()
+U1<- integralPolyFunctionForEach(polyGroups_new, M = 200, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroups_new,
+                                 FUN=function(s){s[,1]}, M = 200, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroups_new,
+                                 FUN=function(s){s[,2]}, M = 200, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+```
+
+```{r basis_function}
+tic()
+X_1<- basisIntegral_New( polyGroups_new, LKinfo, M = 200, cores = 8, normalize = FALSE)
+toc()
+X_1<- spind2spam(X_1)
+```
+```{r LK}
+fit1<- LatticeKrig( reduced_domain, col_co_new, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+fhat_1 <- predictSurface(fit1, nx = 200, ny = 200)
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+world(add = TRUE, lwd = 2)
+```
+
+```{r}
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in seq_along(polyGroups)) {
+  polygon(polyGroups[[k]], col=colors[k], border=NA)
+}
+image(fhat_1, add = TRUE, col = tim.colors())
+world(add = TRUE, lwd = 2)
+
+
+colors <- colorRampPalette(c("#00007F", "blue", "#007FFF", "cyan",
+                             "#7FFF7F", "yellow", "#FF7F00", "red", "#7F0000"))(length(col_co_new))
+
+colors <- colors[rank(col_co_new)]
+#polyNew <- polyGroups[[rank(col_co)]]
+
+#delete when fixed
+#reduced_domain <- rbind(c(140,-48), 
+#                        c(158,-10))
+
+#delete when fixed
+reduced_domain <- rbind(c(140,-38), 
+                        c(152,-33))
+
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in seq_along(polyGroups_new)) {
+  polygon(polyGroups_new[[k]], col=colors[k], border=NA)
+}
+image(fhat_1, add = TRUE, col = tim.colors())
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r full_Test}
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroups, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroups,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroups,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+tic()
+X_1<- basisIntegral_New( polyGroups, LKinfo, M = 100, cores = 8, normalize = FALSE)
+toc()
+X_1<- spind2spam(X_1)
+
+tic()
+fit1<- LatticeKrig( reduced_domain, col_co, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+
+fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+world(add = TRUE, lwd = 2)
+
+save(X_1, file= "basis_big_real.rda")
+#note we need to re-run U_1, U_2, U_3, and fit1
+#time to run this is approx 800 sec. (load X_1 from basis_big_real.rda)
+
+
+set.panel(1, 2)
+image.plot(fhat_1, main = "Predicted Surface")
+world(add = TRUE, lwd = 2)
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE), main = "Predict SE")
+world(add = TRUE, lwd = 2)
+
+```
+
+
+```{r}
+#redo tropomi
+
+load( "basis_big_real.rda") #I'm worried this didn't save/load the correct data.
+load( "trop_data_new.rda")
+
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroups, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroups,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroups,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+tic()
+fit1<- LatticeKrig( reduced_domain, convert_col_co, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+
+fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+world(add = TRUE, lwd = 2)
+
+```
+
+
+```{r}
+load("mop_data_test.rda")
+
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1)
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroups_mop, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+
+tic()
+X_1<- basisIntegral_New( polyGroups_mop, LKinfo, M = 100, cores = 8, normalize = FALSE)
+toc()
+X_1<- spind2spam(X_1)
+
+```
+
+```{r}
+
+tic()
+fit1<- LatticeKrig( reduced_domain, mop1_col, U=U_1, X=X_1, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+
+fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
+world(add = TRUE, lwd = 2)
+
+save(X_1, file= "basis_big_real.rda")
+#note we need to re-run U_1, U_2, U_3, and fit1
+#time to run this is approx 800 sec. (load X_1 from basis_big_real.rda)
+
+
+set.panel(1, 2)
+image.plot(fhat_1, main = "Predicted Surface")
+world(add = TRUE, lwd = 2)
+imagePlot(as.surface(simOut1$x.grid,simOut1$SE), main = "Predict SE")
+world(add = TRUE, lwd = 2)
+```
+

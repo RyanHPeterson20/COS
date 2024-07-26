@@ -1,0 +1,564 @@
+---
+title: "Footpring_dataCleaning"
+author: "Ryan Peterson"
+date: "2024-03-30"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+suppressMessages(library(lubridate))
+suppressMessages(library(fields))
+suppressMessages(library(ncdf4)) #for .nc file type
+suppressMessages(library(raster))
+suppressMessages(library(viridis))
+suppressMessages(library( scales))
+
+```
+
+
+Bounding region, use this to restrict to only the Australia and Maritime SE Asia
+
+```{r bounding_Region}
+Lat_min <- -50
+Lat_max <- 10
+Lon_min <- 90
+Lon_max <- 180
+bounds <- data.frame(Lon_min, Lon_max, Lat_min, Lat_max )
+
+full_domain <- rbind(c(90,-50), 
+                     c(180,10))
+```
+
+
+# TROPOMI Data
+
+TODO: add in multiple data sets to get full coverage of the region.
+
+```{r data_import}
+#-----testing-----##
+
+#test import
+
+##first
+
+file.exists('Data/S5P_OFFL_L2__CO_____20221226T015719_20221226T033848_26952_03_020400_20221229T072250.nc')
+
+
+this.nc <- nc_open('Data/S5P_OFFL_L2__CO_____20221226T015719_20221226T033848_26952_03_020400_20221229T072250.nc')
+
+##
+
+file.exists('Data/S5P_OFFL_L2__CO_____20221226T033848_20221226T052018_26953_03_020400_20221229T072319.nc')
+
+this2.nc <- nc_open('Data/S5P_OFFL_L2__CO_____20221226T033848_20221226T052018_26953_03_020400_20221229T072319.nc')
+
+##
+
+file.exists('Data/S5P_OFFL_L2__CO_____20221226T052018_20221226T070148_26954_03_020400_20221229T072348.nc')
+
+this3.nc <- nc_open('Data/S5P_OFFL_L2__CO_____20221226T052018_20221226T070148_26954_03_020400_20221229T072348.nc')
+
+
+#last
+
+file.exists('Data/S5P_OFFL_L2__CO_____20221226T070148_20221226T084319_26955_03_020400_20221229T072418.nc')
+
+this4.nc <- nc_open('Data/S5P_OFFL_L2__CO_____20221226T070148_20221226T084319_26955_03_020400_20221229T072418.nc')
+
+# test_val.grid <- this.nc[["dim"]][[]]
+```
+Total Column CO and lon/lat bounds
+
+```{r}
+#data 1 (pass 1)
+total_col_co <- ncvar_get(this.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
+test_lonbond <- ncvar_get(this.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
+test_latbond <- ncvar_get(this.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
+
+#data 2 (pass 2)
+total_col_co_2 <- ncvar_get(this2.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
+test_lonbond_2 <- ncvar_get(this2.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
+test_latbond_2 <- ncvar_get(this2.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
+
+#data 3 (pass 3)
+total_col_co_3 <- ncvar_get(this3.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
+test_lonbond_3 <- ncvar_get(this3.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
+test_latbond_3 <- ncvar_get(this3.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
+
+#data 4 (pass 4)
+total_col_co_4 <- ncvar_get(this4.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
+total_col_co_4 <- ncvar_get(this4.nc, "PRODUCT/carbonmonoxide_total_column_corrected") #using delined data
+test_lonbond_4 <- ncvar_get(this4.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
+test_latbond_4 <- ncvar_get(this4.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
+```
+
+
+
+for below matrices they are 215 x 4172, where
+ground pixel 215: The dimension perpendicular to the flight direction.
+scanline 4172: The The dimension that indicates the flight direction.
+
+latitude in CO____/PRODUCT
+Description: The latitude of the pixel centers of the ground pixels in the data. Latitude, longitude
+coordinates for the ground pixel center and the ground pixel corners are calculated at the
+WGS84 ellipsoid.
+
+longitude in CO____/PRODUCT
+Description: The longitude of the pixel centers of the ground pixels in the data. Latitude, longitude
+coordinates for the ground pixel center and the ground pixel corners are calculated at the
+WGS84 ellipsoid.
+
+carbonmonoxide_total_column in CO____/PRODUCT
+Description: Vertically integrated CO column density
+
+
+From this and the bounds we get a centroid for each pixel as latitude,longitude.
+-Then the bounds are defined from latitude_bounds in CO____/PRODUCT/SUPPORT_DATA/GEOLOCATIONS and longitude_bounds in CO____/PRODUCT/SUPPORT_DATA/GEOLOCATIONS. 
+
+```{r function_trop_polygons}
+tropomi_polygons <- function(total_col_co, test_lonbond, test_latbond, bounds){
+  
+  #lots of manual movements (fix later)
+  trop_lonbond_loc1 <- test_lonbond[1,,]
+  trop_lonbond_loc2 <- test_lonbond[2,,]
+  trop_lonbond_loc3 <- test_lonbond[3,,]
+  trop_lonbond_loc4 <- test_lonbond[4,,]
+  
+  trop_latbond_loc1 <- test_latbond[1,,]
+  trop_latbond_loc2 <- test_latbond[2,,]
+  trop_latbond_loc3 <- test_latbond[3,,]
+  trop_latbond_loc4 <- test_latbond[4,,]
+  
+  #get locations in matrix of Non_NA
+  trop_col_co <- total_col_co[which(!is.na(total_col_co))]
+  
+  #select for pixel locations not associated with NA
+  trop_lonbond_loc1 <- trop_lonbond_loc1[which(!is.na(total_col_co))]
+  trop_lonbond_loc2 <- trop_lonbond_loc2[which(!is.na(total_col_co))]
+  trop_lonbond_loc3 <- trop_lonbond_loc3[which(!is.na(total_col_co))]
+  trop_lonbond_loc4 <- trop_lonbond_loc4[which(!is.na(total_col_co))]
+  
+  trop_latbond_loc1 <- trop_latbond_loc1[which(!is.na(total_col_co))]
+  trop_latbond_loc2 <- trop_latbond_loc2[which(!is.na(total_col_co))]
+  trop_latbond_loc3 <- trop_latbond_loc3[which(!is.na(total_col_co))]
+  trop_latbond_loc4 <- trop_latbond_loc4[which(!is.na(total_col_co))]
+  
+  #delete blocks outsides of bounds
+  N <- length(trop_col_co)
+  delete_list <- NA
+  for (i in 1:N) {
+    if(trop_lonbond_loc2[i] < bounds$Lon_min | trop_latbond_loc1[i] < bounds$Lat_min | 
+       trop_latbond_loc1[i] >  bounds$Lat_max){
+      delete_list<- c( delete_list,i)
+    }
+  }
+  delete_list <- delete_list[-1]
+  
+  #delete step
+  trop_col_co <- trop_col_co[-delete_list]
+
+  trop_lonbond_loc1 <- trop_lonbond_loc1[-delete_list]
+  trop_lonbond_loc2 <- trop_lonbond_loc2[-delete_list]
+  trop_lonbond_loc3 <- trop_lonbond_loc3[-delete_list]
+  trop_lonbond_loc4 <- trop_lonbond_loc4[-delete_list]
+  
+  trop_latbond_loc1 <- trop_latbond_loc1[-delete_list]
+  trop_latbond_loc2 <- trop_latbond_loc2[-delete_list]
+  trop_latbond_loc3 <- trop_latbond_loc3[-delete_list]
+  trop_latbond_loc4 <- trop_latbond_loc4[-delete_list]
+  
+  #get polygroups
+  polyGroup <- NA
+  N <- length(trop_lonbond_loc1)
+  #N <- 50000
+  for(i in 1:N){
+    newPoly <- rbind(c(trop_lonbond_loc1[i], trop_latbond_loc1[i]),
+                     c(trop_lonbond_loc2[i], trop_latbond_loc2[i]),
+                     c(trop_lonbond_loc3[i], trop_latbond_loc3[i]),
+                     c(trop_lonbond_loc4[i], trop_latbond_loc4[i]),
+                     c(trop_lonbond_loc1[i], trop_latbond_loc1[i]))
+    polyGroup<- c( polyGroup,list(newPoly))
+  }
+  
+  polyGroup <- polyGroup[-1]
+  test_col <- trop_col_co[1:N]
+  return(list(polygons = polyGroup, data = test_col))
+}
+```
+
+
+```{r test_function}
+out <- tropomi_polygons(total_col_co, test_lonbond, test_latbond, bounds)
+```
+
+
+```{r true_cleaning}
+
+
+trop_lonbond_loc1 <- test_lonbond[1,,]
+trop_lonbond_loc2 <- test_lonbond[2,,]
+trop_lonbond_loc3 <- test_lonbond[3,,]
+trop_lonbond_loc4 <- test_lonbond[4,,]
+
+trop_latbond_loc1 <- test_latbond[1,,]
+trop_latbond_loc2 <- test_latbond[2,,]
+trop_latbond_loc3 <- test_latbond[3,,]
+trop_latbond_loc4 <- test_latbond[4,,]
+
+#get locations in matrix of non-NA
+trop_col_co <- total_col_co[which(!is.na(total_col_co))]
+
+trop_lonbond_loc1 <- trop_lonbond_loc1[which(!is.na(total_col_co))]
+trop_lonbond_loc2 <- trop_lonbond_loc2[which(!is.na(total_col_co))]
+trop_lonbond_loc3 <- trop_lonbond_loc3[which(!is.na(total_col_co))]
+trop_lonbond_loc4 <- trop_lonbond_loc4[which(!is.na(total_col_co))]
+
+trop_latbond_loc1 <- trop_latbond_loc1[which(!is.na(total_col_co))]
+trop_latbond_loc2 <- trop_latbond_loc2[which(!is.na(total_col_co))]
+trop_latbond_loc3 <- trop_latbond_loc3[which(!is.na(total_col_co))]
+trop_latbond_loc4 <- trop_latbond_loc4[which(!is.na(total_col_co))]
+```
+
+
+```{r check_bounds}
+N <- length(trop_col_co)
+delete_list <- NA
+for (i in 1:N) {
+  if(trop_lonbond_loc2[i] < Lon_min | trop_latbond_loc1[i] < Lat_min | 
+     trop_latbond_loc1[i] >  Lat_max){
+    delete_list<- c( delete_list,i)
+  }
+}
+delete_list <- delete_list[-1]
+```
+
+
+```{r delete_outside values}
+trop_col_co <- trop_col_co[-delete_list]
+
+trop_lonbond_loc1 <- trop_lonbond_loc1[-delete_list]
+trop_lonbond_loc2 <- trop_lonbond_loc2[-delete_list]
+trop_lonbond_loc3 <- trop_lonbond_loc3[-delete_list]
+trop_lonbond_loc4 <- trop_lonbond_loc4[-delete_list]
+
+trop_latbond_loc1 <- trop_latbond_loc1[-delete_list]
+trop_latbond_loc2 <- trop_latbond_loc2[-delete_list]
+trop_latbond_loc3 <- trop_latbond_loc3[-delete_list]
+trop_latbond_loc4 <- trop_latbond_loc4[-delete_list]
+```
+
+
+```{r}
+#test with 50k
+
+
+polyGroup <- NA
+N <- length(trop_lonbond_loc1)
+#N <- 50000
+for(i in 1:N){
+  newPoly <- rbind(c(trop_lonbond_loc1[i], trop_latbond_loc1[i]),
+                   c(trop_lonbond_loc2[i], trop_latbond_loc2[i]),
+                   c(trop_lonbond_loc3[i], trop_latbond_loc3[i]),
+                   c(trop_lonbond_loc4[i], trop_latbond_loc4[i]),
+                   c(trop_lonbond_loc1[i], trop_latbond_loc1[i]))
+  polyGroup<- c( polyGroup,list(newPoly))
+}
+
+polyGroup <- polyGroup[-1]
+test_col <- trop_col_co[1:N]
+```
+
+
+```{r}
+out <- tropomi_polygons(total_col_co, test_lonbond, test_latbond, bounds)
+out2 <- tropomi_polygons(total_col_co_2, test_lonbond_2, test_latbond_2, bounds)
+
+
+```
+
+
+```{r}
+out3 <- tropomi_polygons(total_col_co_3, test_lonbond_3, test_latbond_3, bounds)
+out4 <- tropomi_polygons(total_col_co_4, test_lonbond_4, test_latbond_4, bounds)
+
+polyGroups <- c(out$polygons, out2$polygons, out3$polygons, out4$polygons)
+col_co <- c(out$data, out2$data, out4$data, out4$data)
+covert_col_co <- col_co *6.022140857e+19
+scale_lim <- range(covert_col_co)
+zero_vals <- which(covert_col_co <= 0)
+zero_vals
+
+covert_col_co <- covert_col_co[-zero_vals]
+polyGroups <- polyGroups[-zero_vals]
+```
+
+
+
+
+
+lets try this but with lat lon centers, if this is good enough we can run with it
+
+
+# MOPITT Level 3
+
+```{r}
+
+file.exists('Data/MOP02J-20221226-L2V19.10.3.he5')
+
+
+mopitt.nc <- nc_open('Data/MOP02J-20221226-L2V19.10.3.he5')
+```
+
+Grid:
+"HDFEOS/GRIDS/MOP03/Data Fields/NumberofPixelsDay"
+
+```{r}
+grid_mopitt <-  ncvar_get(mopitt.nc, "HDFEOS/GRIDS/MOP03/Data Fields/NumberofPixelsDay")
+```
+
+
+
+# MOPITT Level 2
+
+```{r}
+
+file.exists('Data/MOP02J-20221226-L2V19.10.3.he5')
+
+
+mopitt.nc <- nc_open('Data/MOP02J-20221226-L2V19.10.3.he5')
+```
+
+"HDFEOS/GRIDS/MOP03/Data Fields/RetrievedCOTotalColumnDay" correct this
+Total Column day
+
+```{r}
+mopitt_co <- ncvar_get(mopitt.nc, "HDFEOS/SWATHS/MOP02/Data Fields/RetrievedCOTotalColumn")
+mopitt_co <- mopitt_co[1,] #select for parameter
+```
+
+Pixel "centers"
+pixel are 22x22km
+-pixel polygon corners are 
+
+
+"HDFEOS/SWATHS/MOP02/Geolocation Fields/Latitude"
+Latitude
+"HDFEOS/GRIDS/MOP03/Data Fields/Longitude" Correct this
+Longitude
+
+```{r}
+test_mopitt_lat <-  ncvar_get(mopitt.nc, "HDFEOS/SWATHS/MOP02/Geolocation Fields/Latitude")
+test_mopitt_lon <-  ncvar_get(mopitt.nc, "HDFEOS/SWATHS/MOP02/Geolocation Fields/Longitude")
+```
+
+```{r NA_clean}
+mopitt_col_co <- mopitt_co[which(!is.na(mopitt_co))]
+
+mopitt_lon <- test_mopitt_lon[which(!is.na(mopitt_co))]
+mopitt_lat <- test_mopitt_lat[which(!is.na(mopitt_co))]
+```
+
+```{r boundary_check}
+N <- length(mopitt_col_co)
+delete_list_2 <- NA
+for (j in 1:N) {
+  if(mopitt_lon[j] < bounds$Lon_min | mopitt_lat[j] < bounds$Lat_min | 
+     mopitt_lat[j] > bounds$Lat_max){
+      delete_list_2<- c( delete_list_2,j)
+  }
+}
+delete_list_2 <- delete_list_2[-1]
+```
+
+```{r}
+mopitt_col_co <- mopitt_col_co[-delete_list_2]
+
+mopitt_lon <- mopitt_lon[-delete_list_2]
+mopitt_lat <- mopitt_lat[-delete_list_2]
+```
+
+
+```{r}
+lat_kmdeg <- 1 / 110.574 #lat km in degrees
+1 / (111.320 * cos(mopitt_lat[20] * pi / 180)) #lon km in degrees
+```
+
+
+```{r}
+lat_kmdeg <- 1 / 110.574 #lat km in degrees
+lat_adj <- 11 * lat_kmdeg
+
+N <- length(mopitt_lon)
+mop_lon_loc1 <- NA
+mop_lon_loc2 <- NA
+mop_lon_loc3 <- NA
+mop_lon_loc4 <- NA
+  
+mop_lat_loc1 <- NA
+mop_lat_loc2 <- NA
+mop_lat_loc3 <- NA
+mop_lat_loc4 <- NA
+
+for(k in 1:N){
+  temp_lon_adj <- 11 * (1 / (111.320 * cos(mopitt_lat[k] * pi / 180)))
+  mop_lon_loc1 <- c(mop_lon_loc1, mopitt_lon[k]-temp_lon_adj)
+  mop_lon_loc2 <- c(mop_lon_loc2, mopitt_lon[k]+temp_lon_adj)
+  mop_lon_loc3 <- c(mop_lon_loc3, mopitt_lon[k]+temp_lon_adj)
+  mop_lon_loc4 <- c(mop_lon_loc4, mopitt_lon[k]-temp_lon_adj)
+  
+  mop_lat_loc1 <- c(mop_lat_loc1, mopitt_lat[k]-lat_adj)
+  mop_lat_loc2 <- c(mop_lat_loc2, mopitt_lat[k]-lat_adj)
+  mop_lat_loc3 <- c(mop_lat_loc3, mopitt_lat[k]+lat_adj)
+  mop_lat_loc4 <- c(mop_lat_loc4, mopitt_lat[k]+lat_adj)
+}
+
+mop_lon_loc1 <- mop_lon_loc1[-1]
+mop_lon_loc2 <- mop_lon_loc2[-1]
+mop_lon_loc3 <- mop_lon_loc3[-1]
+mop_lon_loc4 <- mop_lon_loc4[-1]
+  
+mop_lat_loc1 <- mop_lat_loc1[-1]
+mop_lat_loc2 <- mop_lat_loc2[-1]
+mop_lat_loc3 <- mop_lat_loc3[-1]
+mop_lat_loc4 <- mop_lat_loc4[-1]
+
+```
+
+
+```{r}
+polyGroup_mop <- NA
+N <- length(mop_lon_loc1)
+#N <- 50000
+for(i in 1:N){
+  newPoly <- rbind(c(mop_lon_loc1[i], mop_lat_loc1[i]),
+                   c(mop_lon_loc2[i], mop_lat_loc2[i]),
+                   c(mop_lon_loc3[i], mop_lat_loc3[i]),
+                   c(mop_lon_loc4[i], mop_lat_loc4[i]),
+                   c(mop_lon_loc1[i], mop_lat_loc1[i]))
+  polyGroup_mop<- c( polyGroup_mop,list(newPoly))
+}
+
+
+polyGroup_mop <- polyGroup_mop[-1]
+test_col_mop <- mopitt_col_co[1:N]
+
+test_col_mop <- test_col_mop[order(mopitt_col_co)]
+polyGroup_mop <- polyGroup_mop[order(mopitt_col_co)]
+range(test_col_mop)
+```
+
+
+```{r}
+fixed_order <- order(covert_col_co)
+covert_col_co <- covert_col_co[fixed_order]
+polyGroups <- polyGroups[fixed_order]
+```
+
+
+```{r}
+trop_range <- range(covert_col_co)
+mop_range <- range(test_col_mop)
+trop_range
+mop_range
+min(trop_range, mop_range)
+max(trop_range, mop_range)
+
+scale_lim <- c(min(trop_range, mop_range), max(trop_range, mop_range))
+
+save( covert_col_co, test_col_mop,
+      polyGroups, polyGroup_mop,
+    file =  "Trop_Mop_viz.rda")
+```
+
+```{r AUS_boundaries}
+#set NE boundary points
+NE_maxLon <- 155
+NE_minLon <- 134
+NE_maxLat <- -10
+NE_minLat <- -25
+
+#set SE boundary points
+SE_maxLon <- 155
+SE_minLon <- 134
+SE_maxLat <- -25
+SE_minLat <- -48
+```
+
+
+```{r tropomi_viz}
+N<- length(polyGroups)
+cScale<- alpha(turbo(256),.75)
+cTab<- color.scale(covert_col_co, cScale, zlim = scale_lim)
+layout <- setupLegend()
+plot( full_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in 1:N){
+  polyTmp<- polyGroups[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA)
+}
+world(add = TRUE)
+rect(NE_minLon, NE_minLat, NE_maxLon, NE_maxLat, border = "magenta", lwd = 3)
+#text(143, -14, "NE Aus", col = "magenta")
+rect(SE_minLon, SE_minLat, SE_maxLon, SE_maxLat, border = "magenta", lwd = 3)
+#text(143, -30, "SE Aus", col = "magenta")
+addLegend(layout, col=cTab, zlim = scale_lim, 
+          legend.args=list( text="CO [mol/cm^2]", cex=1, side=1, line=1))
+#TODO: add z range on the right
+```
+
+```{r mopitt_viz}
+N<- length(polyGroup_mop)
+cScale<- alpha(turbo(256),.75)
+cTab <- color.scale(test_col_mop, cScale,zlim = scale_lim)
+layout<-setupLegend()
+plot( full_domain, type="n", xlab = "Longitude", ylab = "Latitude", 
+      main = "MOPITT - Total Column CO")
+for ( k in 1:N){
+  polyTmp<- polyGroup_mop[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA)
+}
+world(add = TRUE)
+rect(NE_minLon, NE_minLat, NE_maxLon, NE_maxLat, border = "magenta", lwd = 3)
+#text(143, -14, "NE Aus", col = "magenta")
+rect(SE_minLon, SE_minLat, SE_maxLon, SE_maxLat, border = "magenta", lwd = 3)
+#text(143, -30, "SE Aus", col = "magenta")
+addLegend(layout, col=cTab, zlim = scale_lim, 
+          legend.args=list( text="CO [mol/cm^2]", cex=1, side=1, line=1))
+#mtext("CO [mol/cm^2]", side = 1, adj = 1.25)
+```
+
+```{r}
+set.panel(1,2)
+N<- length(polyGroup_mop)
+cScale<- alpha(turbo(256),.75)
+cTab <- color.scale(test_col_mop, cScale,zlim = scale_lim)
+layout<-setupLegend()
+plot( full_domain, type="n", xlab = "Longitude", ylab = "Latitude", 
+      main = "MOPITT - Total Column CO")
+for ( k in 1:N){
+  polyTmp<- polyGroup_mop[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA)
+}
+world(add = TRUE)
+addLegend(layout, col=cTab, zlim = scale_lim, 
+          legend.args=list( text="CO [mol/cm^2]", cex=1, side=1, line=1))
+
+N<- length(polyGroups)
+cScale<- alpha(turbo(256),.75)
+cTab<- color.scale(covert_col_co, cScale, zlim = scale_lim)
+layout<-setupLegend()
+plot( full_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for ( k in 1:N){
+  polyTmp<- polyGroups[[k]]
+  polygon(polyTmp, col=cTab[k], border=NA)
+}
+world(add = TRUE)
+addLegend(layout, col=cTab, zlim = scale_lim , 
+          legend.args=list( text="CO [mol/cm^2]", cex=1, side=1, line=1))
+```
+
