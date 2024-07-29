@@ -97,7 +97,7 @@ world(add = TRUE, lwd = 2)
 reduced_domain <- rbind(c(140,-48), 
                         c(155,-10))
 
-LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=2, a.wght = 4.1,
                      NC.buffer = 2, normalize = FALSE, nu = 1)
 
 #creates a couple functions
@@ -134,29 +134,60 @@ fhat_1 <- predictSurface(fit1, nx = 100, ny = 100)
 image.plot(fhat_1)
 world(add = TRUE, lwd = 2)
 
-simOut1<- LKrig.sim.conditional( fit1,  M=100) 
+simOut1<- LKrig.sim.conditional( fit1, nx= 100, ny = 100,  M=100) 
 
 imagePlot(as.surface(simOut1$x.grid,simOut1$SE))
 world(add = TRUE, lwd = 2)
 
-save(X_1, file= "basis_big_real.rda")
+save(X_1, file= "basis_nc30_trop.rda")
 
+
+```
+
+
+```{r}
+#nc = 25
 X_1Trop <- X_1
 save(X_1Trop, file = "basis_trop_backup.rda")
 ```
 
+
+```{r scaling_mopitt}
+##trop data
+#convert_co_trop 
+
+##mopt data
+#mop1_col
+
+#relative max/min
+trop_min <- min(convert_co_trop)
+trop_max <- max(convert_co_trop)
+
+mop_min <- min(mop1_col)
+mop_max <- max(mop1_col)
+
+#maxes/mins
+log(c(trop_max, mop_max))
+log(c(trop_min, mop_min))
+
+hist(log(convert_co_trop_corr))
+hist(log(mop1_col))
+```
+
+
+
 ```{r mop_retest}
-LKinfo <- LKrigSetup(reduced_domain, NC=30, nlevel=1, a.wght = 4.1,
+LKinfo <- LKrigSetup(reduced_domain, NC=25, nlevel=2, a.wght = 4.1,
                      NC.buffer = 2, normalize = FALSE, nu = 1)
 
 tic()
-U1<- integralPolyFunctionForEach(polyGroups_mop, M = 100, cores = 8)  # default is constant function 
-U2<- integralPolyFunctionForEach(polyGroups_mop,
+U1_2<- integralPolyFunctionForEach(polyGroups_mop, M = 100, cores = 8)  # default is constant function 
+U2_2<- integralPolyFunctionForEach(polyGroups_mop,
                                  FUN=function(s){s[,1]}, M = 100, cores = 8)
-U3<- integralPolyFunctionForEach(polyGroups_mop,
+U3_2<- integralPolyFunctionForEach(polyGroups_mop,
                                  FUN=function(s){s[,2]}, M = 100, cores = 8)
 toc()
-U_2<- cbind( U1,U2,U3) # U can be a dense matrix
+U_2<- cbind( U1_2,U2_2,U3_2) # U can be a dense matrix
 
 
 tic()
@@ -169,12 +200,13 @@ fit2<- LatticeKrig( reduced_domain, mop1_col, U=U_2, X=X_2, LKinfo=LKinfo,
                     findAwght=TRUE)
 toc()
 
+
 fhat_2 <- predictSurface(fit2, nx = 100, ny = 100)
 
 #TODO fix issue with this fit2 and the dip around ne tas
 surface(fit2) 
 
-simOut2<- LKrig.sim.conditional( fit2,  M=100) 
+simOut2<- LKrig.sim.conditional( fit2, nx= 100, ny = 100, M=100) 
 
 
 image.plot(fhat_2, main = "MOPITT")
@@ -186,9 +218,518 @@ world(add = TRUE, lwd = 2)
 
 
 
-X_2mop <- X_2
-save(X_2mop, file = "basis_mop_backup.rda")
+#X_2mop <- X_2
+#save(X_2mop, file = "basis_mop_backup.rda")
 ```
+
+
+
+```{r re_runLK}
+setwd("~/COS_LK") #move up later
+load("DF_LK/trop_data_corrected.rda")
+
+
+#TODO: adjust U_1, U_2 to only include intercept or be scaled down
+## use log values?
+
+#using log data now
+tic()
+fit1_new <- LatticeKrig( reduced_domain, convert_co_trop_corr, X=X_1,
+                         LKinfo=LKinfo, findAwght=TRUE)
+toc()
+
+fhat_1_new <- predictSurface(fit1_new, nx = 100, ny = 100)
+
+image.plot(fhat_1_new, main = "TROPOMI")
+world(add = TRUE, lwd = 2)
+
+image.plot(fhat_1_new$x, fhat_1_new$y, log(fhat_1_new$z), main = "TROPOMI - Log")
+world(add = TRUE, lwd = 2)
+```
+
+# Updated Section
+
+```{r data}
+setwd("~/COS_LK") #move up later
+load("DF_LK/trop_data_corrected.rda")
+load("DF_LK/basis_nc30_trop.rda")
+```
+
+```{r setup}
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+
+LKinfo <- LKrigSetup(reduced_domain, NC=25, nlevel=2, a.wght = 4.1,
+                     NC.buffer = 2, normalize = FALSE, nu = 1, 
+                     fixedFunctionArgs = list(m=1))
+
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+```
+
+
+```{r test}
+x <- reduced_domain
+m <- 2
+T.matrix <- fields.mkpoly(x, m = m)
+#Z <- 1
+#nCol <- ncol(x)
+#T.matrix <- cbind(fields.mkpoly(x[, 2:nCol], m = m), Z)
+```
+
+
+```{r mopitt}
+tic()
+U1_2<- integralPolyFunctionForEach(polyGroups_mop, M = 100, cores = 8)  # default is constant function 
+U2_2<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3_2<- integralPolyFunctionForEach(polyGroups_mop,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_2<- cbind( U1_2,U2_2,U3_2) # U can be a dense matrix
+
+
+tic()
+X_2<- basisIntegral_New( polyGroups_mop, LKinfo, M = 100, cores = 8, normalize = FALSE)
+toc()
+X_2<- spind2spam(X_2)
+```
+Not needed
+
+```{r}
+polygon_area <- function(poly_gon) {
+  x <- poly_gon[ ,1]
+  y <- poly_gon[ ,2]
+  n <- length(x)
+  i <- c(2:n, 1)  # Index to circle back around to the first coordinate
+  sum(x[i] * y - y[i] * x) / 2
+}
+
+#temp_polyMop <- polyGroups_mop[1:10]
+
+#test_vec <- lapply(temp_polyMop, polygon_area)
+
+mop_area <- lapply(polyGroups_mop, polygon_area)
+
+trop_area <- lapply(polyGroup_trop, polygon_area)
+
+#poly_x <- temp_polyMop[ ,1]
+#poly_y <- temp_polyMop[ ,2]
+
+#poly_area <- abs(polygon_area(temp_polyMop))
+
+#test_X_2 <- as.matrix(X_2)
+#test_X_2[1, ]/poly_area
+```
+
+```{r}
+test_X_2 <- as.matrix(X_2)
+abs_mop_area <- abs(unlist(mop_area))
+X_2adj <- sweep(test_X_2, MARGIN = 1, STATS = abs_mop_area, FUN = "/")
+nrow(test_X_2)
+ncol(test_X_2)
+test_X_2 <- as.spam(test_X_2)
+X_2adj <- as.spam(X_2adj)
+
+test_X_1 <- as.matrix(X_1)
+abs_trop_area <- abs(unlist(trop_area))
+X_1adj <- sweep(test_X_1, MARGIN = 1, STATS = abs_trop_area, FUN = "/")
+nrow(test_X_1)
+ncol(test_X_1)
+test_X_1 <- as.spam(test_X_1)
+X_1adj <- as.spam(X_1adj)
+```
+
+
+```{r mop_adj}
+#cov maxtrix adjustments
+#TODO: if below doesn't work replace some of the covs with 0, or nearly zero
+U1_temp <- U1_2 / abs(mean(U1_2))
+U2_temp <- U2_2
+#U3_temp <- U3_2
+U1_temp[,] <- 1
+U2_temp[,] <- 1
+U_2test <- cbind( U2_2, U3_2)
+
+##LK chunck
+log_mop <- log(mop1_col)
+tic()
+fit2_new<- LatticeKrig( reduced_domain, log_mop, U = U1_temp, X=X_2adj, LKinfo=LKinfo,
+                    findAwght=TRUE)
+toc()
+#fit2_new$y
+
+surface(fit2_new)
+
+fit2_new$d.coef
+
+#fit2_new$d.coef[1,1] <- 1
+#fit2_new$d.coef[2,1] <- -1
+#fit2_new$d.coef[3,1] <- 1
+fhat_2new  <- predictSurface(fit2_new,nx = 100, ny = 100)
+
+image.plot(fhat_2new, main = "MOPITT", xlab = "Longitude", ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+
+
+```
+
+```{r}
+nt<- fit2_new$nt
+nZ<- fit2_new$nZ
+# logical that indicates the spatial drift component (e.g. a low order polynomial)     
+ind.drift<- c( rep( TRUE, (nt-nZ) ), rep( FALSE, nZ)) 
+
+fit2_new$d.coef[ind.drift, ]
+T.matrix%*%fit2_new$d.coef[ind.drift, ]
+```
+
+
+```{r log_adj}
+
+log_adj <- function(x) {
+  if (x < 0) {
+    x_temp <- -log(abs(x))
+  } else {
+    x_temp <- log(x)
+  }
+  
+  if (x == 0) {
+    x_temp <- x
+  }
+  return(x_temp)
+}
+
+fit2_test <- fit2_new
+fit2_test$y <- log(fit2_test$y)
+fit2_test$fitted.values <- log(fit2_test$fitted.values)
+fit2_test$residuals <- fit2_test$y - fit2_test$fitted.values
+
+#make a function for negative values turn to positve, log then back to neg
+fit2_test$d.coef <- log(fit2_test$d.coef) #beta hat
+#fit2_test$c.coef <- log(fit2_test$c.coef) #c hat
+test_coef <- sapply(fit2_test$c.coef, log_adj)
+
+min(test_coef)
+fit2_test$c.coef <- test_coef
+
+fit2_test$X <- sapply(fit2_test$X, log_adj)
+fit2_test$U <- sapply(fit2_test$U, log_adj)
+
+fhat_2log <-  predictSurface(fit2_test, nx = 100, ny = 100)
+
+
+image.plot(fhat_2log, main = "MOPITT")
+world(add = TRUE, lwd = 2)
+
+
+```
+
+
+```{r}
+tic()
+simOut2_new <- LKrig.sim.conditional( fit2_new, nx= 100, ny = 100, M=100) 
+toc()
+#simOut2_log <- LKrig.sim.conditional( fit2_test, nx= 100, ny = 100, M=100) 
+
+
+imagePlot(as.surface(simOut2_new$x.grid, log(simOut2_new$ghat)))
+world(add = TRUE, lwd = 2)
+
+imagePlot(as.surface(simOut2_new$x.grid, log(simOut2_new$SE)))
+world(add = TRUE, lwd = 2)
+
+#imagePlot(as.surface(simOut2_log$x.grid, simOut2_log$SE))
+#world(add = TRUE, lwd = 2)
+```
+
+
+```{r new_Trop}
+#creates a couple functions
+FUNX<- function(s){
+  s[,1]
+}
+
+FUNY<- function(s){
+  s[,2]
+}
+
+tic()
+U1<- integralPolyFunctionForEach(polyGroup_trop, M = 100, cores = 8)  # default is constant function 
+U2<- integralPolyFunctionForEach(polyGroup_trop,
+                                 FUN=function(s){s[,1]}, M = 100, cores = 8)
+U3<- integralPolyFunctionForEach(polyGroup_trop,
+                                 FUN=function(s){s[,2]}, M = 100, cores = 8)
+toc()
+U_1<- cbind( U1,U2,U3) # U can be a dense matrix
+
+```
+```{r check_x1}
+#find min max of both reg and adj X1
+min(X_1@entries)
+min(X_1adj@entries)
+
+min(X_2@entries)
+min(X_2adj@entries)
+
+max(X_1@entries)
+max(X_1adj@entries)
+
+max(X_2@entries)
+max(X_2adj@entries)
+```
+
+
+```{r LK_trop}
+
+tic()
+fit1_new <- LatticeKrig( reduced_domain, convert_co_trop_corr, U=U_1, X=X_1,
+                         LKinfo=LKinfo, findAwght=TRUE)
+
+toc()
+
+log_trop <- log(convert_co_trop_corr)
+U1_1_temp <- U1 / U1
+
+min(log_trop)
+max(log_trop)
+
+mean(U1_2)
+#U1_temp
+10 * mean(U1)
+
+tic()
+fit1_log <- LatticeKrig( reduced_domain, log_trop, U=U1_1_temp, X=X_1adj,
+                         LKinfo=LKinfo, findAwght=TRUE)
+toc()
+
+fit1_log$d.coef
+
+fhat_1log <- predictSurface(fit1_log, nx = 100, ny = 100)
+
+image.plot(fhat_1log, main = "TROPOMI", xlab = "Longitude", ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+
+
+save(U_1, fit1_new, fit1_log, file = "trop_LK_update.rda")
+
+fhat_1 <- predictSurface(fit1_new, nx = 100, ny = 100)
+
+
+
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+
+
+image.plot(fhat_1$x, fhat_1$y, log(fhat_1$z), main = "TROPOMI - Log")
+world(add = TRUE, lwd = 2)
+
+simOut1 <- LKrig.sim.conditional( fit1_new, nx= 100, ny = 100,  M=100) 
+
+
+imagePlot(as.surface(simOut1$x.grid, simOut1$SE))
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r}
+temp_gdraw <- apply(simOut1$g.draw, c(1,2), FUN = log_adj)
+min(simOut1$g.draw)
+logSE<-  apply(temp_gdraw, 1, FUN=sd)
+
+max(logSE)
+
+imagePlot(as.surface(simOut1$x.grid, logSE))
+world(add = TRUE, lwd = 2)
+
+temp_gdraw2 <- apply(simOut2_new$g.draw, c(1,2), FUN = log_adj)
+min(simOut2_new$g.draw)
+logSE2<-  apply(temp_gdraw2, 1, FUN=sd)
+
+max(logSE2)
+
+imagePlot(as.surface(simOut2_new$x.grid, logSE2))
+world(add = TRUE, lwd = 2)
+```
+
+
+
+```{r fuse_redo}
+#TODO: fix for log
+U_F <- rbind(U1_1_temp, U1_temp)
+
+#create new matrix X_F
+X_F <- rbind(X_1adj, X_2adj)
+
+
+y_full <- append(log_trop, log_mop)
+
+# estimating lambda and the a.wght parameter
+tic()
+fit_F<- LatticeKrig( reduced_domain, y_full, U=U_F, X=X_F, LKinfo=LKinfo,
+                     findAwght=TRUE)
+toc()
+
+fhat_F <- predictSurface(fit_F, nx = 100, ny = 100)
+
+save(U_F, X_F, fit_F, file = "fuse_new.rda")
+
+image.plot(fhat_F, main = "Fused", xlab = "Longitude", ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+
+
+simOutF<- LKrig.sim.conditional( fit_F, nx = 100, ny = 100, M=100) 
+
+imagePlot(as.surface(simOutF$x.grid,simOutF$SE))
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r cond_SimLog}
+simOutF<- LKrig.sim.conditional( fit_F, nx = 100, ny = 100, M=200) 
+
+imagePlot(as.surface(simOutF$x.grid,simOutF$SE))
+world(add = TRUE, lwd = 2)
+
+
+simOut1 <- LKrig.sim.conditional( fit1_log, nx= 100, ny = 100,  M=200) 
+
+
+imagePlot(as.surface(simOut1$x.grid, simOut1$SE))
+world(add = TRUE, lwd = 2)
+
+simOut2_new <- LKrig.sim.conditional( fit2_new, nx= 100, ny = 100, M=200) 
+
+#simOut2_log <- LKrig.sim.conditional( fit2_test, nx= 100, ny = 100, M=100) 
+
+imagePlot(as.surface(simOut2_new$x.grid, simOut2_new$SE))
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r save}
+save(fit2_new, fit1_log, fit_F, file = "model_fits.rda")
+save(simOut1, simOut2_new, simOutF, file = "cond_sims.rda")
+```
+
+
+```{r limits}
+
+pred_lim <- c(min(fhat_F$z, fhat_1log$z, fhat_2new$z, na.rm = TRUE),
+              max(fhat_F$z, fhat_1log$z, fhat_2new$z, na.rm = TRUE))
+
+se_lim <- c(min(simOut1$SE, simOut2_new$SE, simOutF$SE),
+            max(simOut1$SE, simOut2_new$SE, simOutF$SE))
+```
+
+
+```{r viz}
+image.plot(fhat_F, zlim = pred_lim,  main = "Prediction - Fused", xlab = "Longitude", 
+           ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+mtext("log(mol/cm^2)", side = 1, adj = 1.30)
+
+image.plot(fhat_1log, zlim = pred_lim, main = "Prediction - TROPOMI", xlab = "Longitude",
+           ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+mtext("log(mol/cm^2)", side = 1, adj = 1.30)
+
+image.plot(fhat_2new, zlim = pred_lim, main = "Prediction - MOPITT", xlab = "Longitude", 
+           ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+mtext("log(mol/cm^2)", side = 1, adj = 1.30)
+
+imagePlot(as.surface(simOut1$x.grid, simOut1$SE), zlim = se_lim, 
+          main = "Prediction SE - TROPOMI", xlab = "Longitude", 
+          ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+
+imagePlot(as.surface(simOut2_new$x.grid, simOut2_new$SE), zlim = se_lim, 
+          main = "Prediction SE - MOPITT", xlab = "Longitude", 
+          ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+
+
+imagePlot(as.surface(simOutF$x.grid, simOutF$SE), zlim = se_lim, 
+          main = "Prediction SE - Fused", xlab = "Longitude", 
+          ylab = "Latitude")
+world(add = TRUE, lwd = 2)
+```
+
+```{r hist}
+trop_rat <- simOutF$SE / simOut1$SE
+max(trop_rat)
+which.max(trop_rat)
+
+round(simOut1$SE[which.max(trop_rat)], digits = 3)
+round(simOutF$SE[which.max(trop_rat)], digits = 3)
+
+hist(trop_rat)
+
+mop_rat <- simOutF$SE /simOut2_new$SE 
+
+hist(mop_rat)
+
+max(mop_rat)
+which.max(mop_rat)
+
+simOut2_new$SE[which.max(mop_rat)]
+simOutF$SE[which.max(mop_rat)]
+
+simOutF$x.grid[28, ]
+#sort(mop_rat, decreasing = TRUE)
+```
+
+
+```{r se_check}
+temp_gdraw <- apply(simOut1$g.draw, c(1,2), FUN = log_adj)
+min(simOut1$g.draw)
+logSE<-  apply(temp_gdraw, 1, FUN=sd)
+
+max(logSE)
+
+imagePlot(as.surface(simOut1$x.grid, logSE))
+world(add = TRUE, lwd = 2)
+
+temp_gdraw2 <- apply(simOut2_new$g.draw, c(1,2), FUN = log_adj)
+min(simOut2_new$g.draw)
+logSE2<-  apply(temp_gdraw2, 1, FUN=sd)
+
+max(logSE2)
+
+imagePlot(as.surface(simOut2_new$x.grid, logSE2))
+world(add = TRUE, lwd = 2)
+
+temp_gdrawf <- apply(simOutF$g.draw, c(1,2), FUN = log_adj)
+min(simOutF$g.draw)
+logSEf<-  apply(temp_gdrawf, 1, FUN=sd)
+
+max(logSEf)
+
+imagePlot(as.surface(simOutF$x.grid, logSEf))
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r temp}
+image.plot(fhat_2$x, fhat_2$y, log(fhat_2$z), main = "MOPITT - Log")
+world(add = TRUE, lwd = 2)
+
+image.plot(fhat_1, main = "TROPOMI")
+world(add = TRUE, lwd = 2)
+
+image.plot(fhat_1$x, fhat_1$y, log(fhat_1$z), main = "TROPOMI - Log")
+world(add = TRUE, lwd = 2)
+```
+
+
+
 
 
 ```{r fuse}
@@ -216,18 +757,67 @@ surface(fit_F)
 image.plot(fhat_F)
 world(add = TRUE, lwd = 2)
 
-simOutF<- LKrig.sim.conditional( fit_F,  M=100) 
+simOutF<- LKrig.sim.conditional( fit_F, nx = 100, ny = 100, M=100) 
 
 imagePlot(as.surface(simOutF$x.grid,simOutF$SE))
 world(add = TRUE, lwd = 2)
 ```
 
 
+```{r zlim}
+trop_min <- min(log(fhat_1$z), na.rm = TRUE)
+mop_min <- min(log(fhat_2$z), na.rm = TRUE)
+fuse_min <- min(log(fhat_F$z), na.rm = TRUE)
+c(trop_min, mop_min, fuse_min)
+
+trop_max <- max(log(fhat_1$z), na.rm = TRUE)
+mop_max <- max(log(fhat_2$z), na.rm = TRUE)
+fuse_max <- max(log(fhat_F$z), na.rm = TRUE)
+c(trop_max, mop_max, fuse_max)
+
+co_min <- min(trop_min, mop_min, fuse_min)
+co_max <- max(trop_max, mop_max, fuse_max)
+
+co_lim <- c(co_min, co_max)
+```
+
+
 ```{r plots}
-se_lim <- c()
-co_lom <- c(0, max(fhat_1$z, ))
-fhat_1$z
-max(!is.na(fhat_1$z, fhat_2$z, fhat_F$z))
+set.panel(1,3)
+image.plot(fhat_2$x, fhat_2$y, log(fhat_2$z), zlim = co_lim,
+           main = "MOPITT - Log")
+world(add = TRUE, lwd = 2)
+
+image.plot(fhat_1$x, fhat_1$y, log(fhat_1$z), zlim = co_lim,
+           main = "TROPOMI - Log")
+world(add = TRUE, lwd = 2)
+
+image.plot(fhat_F$x, fhat_F$y, log(fhat_F$z), zlim = co_lim, 
+           main = "Fused - Log")
+world(add = TRUE, lwd = 2)
+
+set.panel(1,3)
+image.plot(fhat_1)
+world(add = TRUE, lwd = 2)
+image.plot(fhat_2)
+world(add = TRUE, lwd = 2)
+image.plot(fhat_F)
+world(add = TRUE, lwd = 2)
+#dev.off()
+```
+
+
+
+```{r se_compare}
+trop_se <- simOut1$SE
+mop_se <- simOut2$SE
+fuse_se <- simOutF$SE
+
+trop_comp <- trop_se / fuse_se
+max(trop_comp)
+
+mop_comp <- mop_se / fuse_se
+max(mop_comp)
 ```
 
 

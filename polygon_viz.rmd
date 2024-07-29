@@ -1,0 +1,138 @@
+---
+title: "polygon_viz.rmd"
+author: "Ryan Peterson"
+date: "2024-07-28"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library}
+#libraries
+suppressMessages(library(LatticeKrig))
+
+#color
+suppressMessages(library(grDevices))
+```
+
+```{r data}
+#data
+setwd("~/COS_LK")
+#reduced domain
+load("DF_LK/trop_data_aus.rda")
+load("DF_LK/trop_data_corrected.rda")
+load("DF_LK/mop_data_aus.rda")
+
+#save for later (Full data set)
+load("DF_LK/trop_data_full.rda")
+load("DF_LK/mop_data_full.rda")
+```
+
+```{r reduced_domain}
+##reduced
+aus.lat.range <- c(-48, -10) 
+aus.lon.range <- c(140, 155)
+reduced_bounds <- data.frame(Lon_min = aus.lon.range[1], 
+                             Lon_max = aus.lon.range[2],
+                             Lat_min = aus.lat.range[1],
+                             Lat_max = aus.lat.range[2])
+
+reduced_domain <- rbind(c(140,-48), 
+                        c(155,-10))
+```
+
+```{r base_comparisons}
+
+
+min_mop <- min(mop1_col)
+max_mop <- max(mop1_col)
+min_trop <- min(convert_co_trop_corr)
+max_trop <- max(convert_co_trop_corr)
+
+scaling <- max_trop / max_mop
+
+max_mop * scaling
+max_trop
+
+min_mop * scaling
+min_trop
+#scaling test
+scale_mop <- mop1_col * scaling
+```
+
+```{r viz_setup}
+log_trop <- log(convert_co_trop_corr)
+log_mop <- log(mop1_col)
+
+comb_log <- c(log_trop, log_mop)
+
+#trop (mol/cm2)
+zlim_trop <- range(c(log_trop), na.rm = TRUE)
+
+#color setup
+test_trop <- as.matrix(log_trop)
+
+#mop (mol/cm2)
+zlim_mop <- range(c(log_mop), na.rm = TRUE)
+
+#color setup
+test_mop <- as.matrix(log_mop)
+
+#combined zlim 
+full_lim <- range(c(comb_log), na.rm = TRUE)
+```
+
+
+```{r}
+
+nlevel <- 64
+midpoints<- seq( full_lim[1], full_lim[2], ,nlevel)
+delta<- (midpoints[2]- midpoints[1])/2
+# nlevel +1 breaks with the min and max as midpoints 
+# of the first and last bins.
+breaks <- c( midpoints[1]- delta, midpoints + delta)
+
+zcol_trop <- drape.color(test_trop, col = tim.colors(nlevel), midpoint = FALSE, 
+                         zlim = full_lim, transparent.color = "white", 
+                         breaks = breaks)$color.index
+
+#zcol_trop[which.max(convert_tropFull), 1]
+
+#corrected viz
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "TROPOMI - Total Column CO")
+for (i in 1:length(polyGroup_trop_correct)) {
+  pcol <- c(zcol_trop[i, 1])
+  polygon(polyGroup_trop_correct[[i]], col = pcol, border=NA)
+}
+world(add = TRUE, lwd = 2)
+```
+
+
+```{r}
+
+nlevel <- 64
+midpoints<- seq( full_lim[1], full_lim[2], ,nlevel)
+delta<- (midpoints[2]- midpoints[1])/2
+# nlevel +1 breaks with the min and max as midpoints 
+# of the first and last bins.
+breaks <- c( midpoints[1]- delta, midpoints + delta)
+
+zcol_mop <- drape.color(test_mop, col = tim.colors(nlevel), midpoint = FALSE, 
+                         zlim = full_lim, transparent.color = "white", 
+                         breaks = breaks)$color.index
+
+#zcol_trop[which.max(convert_tropFull), 1]
+
+#corrected viz
+plot( reduced_domain, type="n",xlab = "Longitude", ylab = "Latitude",
+      main = "MOPITT - Total Column CO")
+for (i in 1:length(polyGroups_mop)) {
+  pcol <- c(zcol_mop[i, 1])
+  polygon(polyGroups_mop[[i]], col = pcol, border=NA)
+}
+world(add = TRUE, lwd = 2)
+```
+

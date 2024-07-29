@@ -72,10 +72,16 @@ trop2_co <- ncvar_get(trop2.nc, "PRODUCT/carbonmonoxide_total_column") #lots of 
 trop2_lonbond <- ncvar_get(trop2.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
 trop2_latbond <- ncvar_get(trop2.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
 
+trop2_co_correct <- ncvar_get(trop2.nc, "PRODUCT/carbonmonoxide_total_column_corrected") #lots of NA
+
+
 ##data 3 (pass 3)
 trop3_co <- ncvar_get(trop3.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
 trop3_lonbond <- ncvar_get(trop3.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/longitude_bounds")
 trop3_latbond <- ncvar_get(trop3.nc, "PRODUCT/SUPPORT_DATA/GEOLOCATIONS/latitude_bounds")
+
+trop3_co_correct <- ncvar_get(trop3.nc, "PRODUCT/carbonmonoxide_total_column_corrected") #lots of NA
+trop3_prec <- ncvar_get(trop3.nc, "PRODUCT/carbonmonoxide_total_column_precision") #lots of NA
 
 ##data 4 (pass 4)
 trop4_co <- ncvar_get(trop4.nc, "PRODUCT/carbonmonoxide_total_column") #lots of NA
@@ -93,17 +99,31 @@ trop2_poly <- tropomi_polygons(trop2_co, trop2_lonbond, trop2_latbond, reduced_b
 toc()
 
 tic()
+trop2_poly_correct <- tropomi_polygons(trop2_co_correct , trop2_lonbond, trop2_latbond, reduced_bounds)
+toc()
+
+tic()
 trop3_poly <- tropomi_polygons(trop3_co, trop3_lonbond, trop3_latbond, reduced_bounds)
 toc()
 
+tic()
+trop3_poly_correct <- tropomi_polygons(trop3_co_correct , trop3_lonbond, trop3_latbond, reduced_bounds)
+toc()
 
+tic()
+trop3_poly_prec <- tropomi_polygons(trop3_prec , trop3_lonbond, trop3_latbond, reduced_bounds)
+toc()
+
+#note: below values are 
+test_data <- trop3_poly_correct$data
+test_prec <- trop3_poly_prec$data
 
 #trop1_poly currently giving NAs
 #combing data
 
 polyGroup_trop <- c(trop2_poly$polygons, trop3_poly$polygons)
 col_co <- c(trop2_poly$data, trop3_poly$data)
-convert_co_trop <- col_co *6.022140857e+19
+convert_co_trop <- col_co * 6.02214e+19
 scale_lim <- range(convert_co_trop)
 zero_vals <- which(convert_co_trop <= 0)
 length(zero_vals)
@@ -115,6 +135,24 @@ if (length(zero_vals) > 0) {
 
 
 save(convert_co_trop, polyGroup_trop, file = "trop_data_aus.rda")
+
+
+#corrected for banding:
+
+polyGroup_trop_correct <- c(trop2_poly_correct$polygons, trop3_poly_correct$polygons)
+col_co_corr <- c(trop2_poly_correct$data, trop3_poly_correct$data)
+convert_co_trop_corr <- col_co_corr * 6.02214e+19
+scale_lim <- range(convert_co_trop_corr)
+zero_vals <- which(convert_co_trop_corr <= 0)
+length(zero_vals)
+
+if (length(zero_vals) > 0) {
+  convert_co_trop <- convert_co_trop[-zero_vals]
+  polyGroup_trop <- polyGroup_trop[-zero_vals]
+}
+
+save(convert_co_trop_corr, col_co_corr, 
+     polyGroup_trop_correct, file = "trop_data_corrected.rda")
 
 #repeat for full area
 
@@ -138,20 +176,21 @@ toc()
 #trop1_poly currently giving NAs
 #combing data
 
-polyGroup_trop <- c(trop1_polyFull$polygons, trop2_polyFull$polygons,
+polyGroup_tropFull <- c(trop1_polyFull$polygons, trop2_polyFull$polygons,
                     trop3_polyFull$polygons, trop4_polyFull$polygons)
 col_co <- c(trop1_polyFull$data, trop2_polyFull$data,
             trop3_polyFull$data, trop4_polyFull$data)
-convert_co_trop <- col_co *6.022140857e+19
-scale_lim <- range(convert_co_trop)
-zero_vals <- which(convert_co_trop <= 0)
+convert_tropFull <- col_co *6.022140857e+19
+scale_lim <- range(convert_tropFull)
+zero_vals <- which(convert_tropFull <= 0)
 length(zero_vals)
 
 if (length(zero_vals) > 0) {
-  convert_co_trop <- convert_co_trop[-zero_vals]
-  polyGroup_trop <- polyGroup_trop[-zero_vals]
+  convert_tropFull <- convert_tropFull[-zero_vals]
+  polyGroup_tropFull <- polyGroup_tropFull[-zero_vals]
 }
 
+save(polyGroup_tropFull, convert_tropFull, file = "trop_data_full.rda")
 
 ##VIS test
 #jet color pallet
@@ -179,6 +218,8 @@ mop1.nc <- nc_open('DataNEW/MOP02J-20191230-L2V19.9.3.he5')
 mop2.nc <- nc_open("DataNEW/MOP02J-20191231-L2V19.9.3.he5")
 
 mop_co <- ncvar_get(mop1.nc, "HDFEOS/SWATHS/MOP02/Data Fields/RetrievedCOTotalColumn")
+mop_fix <- ncvar_get(mop1.nc, "HDFEOS/SWATHS/MOP02/Data Fields/APrioriCOTotalColumn")
+
 
 mop_lat <-  ncvar_get(mop1.nc, "HDFEOS/SWATHS/MOP02/Geolocation Fields/Latitude")
 mop_lon <-  ncvar_get(mop1.nc, "HDFEOS/SWATHS/MOP02/Geolocation Fields/Longitude")
@@ -191,17 +232,19 @@ mop1_co <- mop_co[1, ] #selects for data
 #mop1_co[1]
 #mop_aprior[1]
 
-mop1_polyFull <- mopitt_polygons(mop1_co, mop_lon, mop_lat, reduced_bounds)
+mop1_polyFull <- mopitt_polygons(mop1_co, mop_lon, mop_lat, bounds)
 
-mop1_col <- mop1_polyFull$data
-polyGroups_mop <- c(mop1_polyFull$polygons)
-zero_vals <- which(mop1_col <= 0)
+mop1_coFull <- mop1_polyFull$data
+polyGroups_mopFull <- c(mop1_polyFull$polygons)
+zero_vals <- which(mop1_coFull <= 0)
 length(zero_vals)
 
 if (length(zero_vals) > 0) {
-  mop1_col <- mop1_col[-zero_vals]
-  polyGroups_mop <- polyGroups_mop[-zero_vals]
+  mop1_coFull <- mop1_coFull[-zero_vals]
+  polyGroups_mopFull <- polyGroups_mopFull[-zero_vals]
 }
+
+save(mop1_coFull, polyGroups_mopFull, file = "mop_data_full.rda")
 
 save(mop1_col, polyGroups_mop, file = "mop_data_aus.rda")
 
