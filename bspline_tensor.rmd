@@ -1,0 +1,116 @@
+---
+title: "bspline_tensor"
+author: "Ryan Peterson"
+date: "2024-08-20"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+
+suppressMessages(library(fda)) #for splineDesign
+```
+
+
+Goal is to create a surface from b-spline tensor products across a lattice.
+
+Steps:
+
+1. Define/create cardinal b-spline, and apply tensor product.
+  a. Make adjustments to `naturalSplineBasis` function to create interior cardinal b-splines
+
+2. 
+
+
+```{r functions}
+setwd("~/COS_LK")
+source("DF_LK/R/naturalSplineBasis.R") #fix this for our specific purpose
+```
+
+
+
+```{r raw_function}
+naturalSplineBasis <- function(sGrid,
+                               sKnots,
+                               degree = 3,
+                               derivative = 0) {
+  boundaryKnots<- c( min(sKnots),max(sKnots))
+  sKnots0<- c( rep( boundaryKnots[1],degree),sort(sKnots),
+               rep( boundaryKnots[2],degree) )
+  testRight<- sGrid < min(sKnots) 
+  testLeft <- sGrid > max(sKnots)             
+  if( any(testRight |testLeft) )
+  {stop("some points for evaluation outside knot range.")}
+               
+  basis <- splineDesign(sKnots0, sGrid,
+                        ord= degree+1, outer.ok=TRUE,
+                        derivs=derivative)
+  # set up constraints to enforce natural BCs.
+  #require library(fda)
+  const <- splineDesign(sKnots0, boundaryKnots, ord = degree+1,
+                        derivs = c(2,2)) 
+  qr.const <- qr(t(const))
+  QBasis<- t(qr.qty( qr.const, t(basis) ))
+  basis <- QBasis[,-(1:2)]
+  basis
+  
+  return( basis )
+  
+}
+```
+
+# 1. Cardinal B-spline
+
+Degree 3 cardinal B-spline (order 4)
+
+
+
+```{r}
+x2knots <- seq(-4, 4, 1)
+#x2Grid <- seq(-1,1,0.01)
+x2Grid <- seq( -4, 4, .01)
+look <- naturalSplineBasis(x2Grid, x2knots, degree=3) #order 3, degree 2
+c_1 <- 3/2
+look1 <- c_1 * look[,4] #coefficient should work here too
+
+plot(x2Grid, look1, type="l")
+abline(v = seq(-4, 4, 1), lty = 2)
+```
+
+## . Tensor Partition of Unity
+
+Test that the 2-D version of our tensor b-splines will follow our expected partition of unity.
+
+- Centered on every knot on the lattice with integer spacing
+
+- This will require a minimum of two buffer knots on all boundaries.
+
+```{r}
+look2 <- look[,3]
+tSpline1 <- outer(look1, look1, "*")
+tSpline2 <- outer(look2, look2, "*")
+
+tSpline3 <- outer(look1, look2, "*")
+tSpline4 <- outer(look2, look1, "*")
+
+
+
+test_grid <- expand.grid(X = x2knots, Y = x2knots)
+plot(test_grid$X, as.numeric(test_grid$Y), 
+     xlab = "X", ylab = "Y",
+     pch = 19)
+rect(-2, -2, 2, 2, border = "darkmagenta", lwd = 2)
+
+test_surface <- tSpline1 + tSpline2 
+
+max(look1)^2
+max(tSpline1)
+
+imagePlot(test_surface)
+```
+
