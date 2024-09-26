@@ -26,3 +26,21 @@ plot(range(x_grid), c(0,1), type = "n", xlab = "x", ylab = "")
 abline(v = base_knots, lty = 2)
 matlines(x_grid, test_bsplines, ylim = c(0,1), lty = 1)
 lines(x_grid, rowSums(test_bsplines), col = "gray", lwd = 2)
+
+#test function as tensor product.
+
+#using the tensor after evaluating
+tSpline1 <- outer(look1, look2, "*")
+tSpline2 <- outer(look2, look2, "*")
+
+#from LatticeKrig
+phi_temp <- Tensor.basis(xyGrid, centered, basis.delta = 1,
+                         max.points = NULL,
+                         mean.neighbor = 50, 
+                         BasisFunction = get(LKinfo$basisInfo$BasisFunction),
+                         distance.type = LKinfo$distance.type)
+
+#basis function is derived from LKinfo$basisInfo$BasisFunction:
+
+
+

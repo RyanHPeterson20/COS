@@ -1,0 +1,123 @@
+---
+title: "cubicspline_latticekrig"
+author: "Ryan Peterson"
+date: "2024-09-19"
+output: pdf_document
+---
+
+
+```{r library} 
+suppressMessages(library(LatticeKrig))
+```
+
+
+```{r functions}
+setwd("~/COS_LK")
+
+source("DF_LK/R/bspline_poly.R")
+
+#LK functions
+source("LK_dev/ModelInterval.R")
+source("LK_dev/WendlandFunction.R")
+```
+
+Goal of this document is to get `cubicSplineBasis` function working in LatticeKrig
+
+Steps:
+- Make adjustments for different "knot" locations and scale (distance between "knots") (review spatialstats project).
+
+
+1. Begin with 1-d version
+    i. Begin with 1-d version outside of LK first. 
+  a. Set geometry in LatticeKrig for 1-d (in LKinfo)
+    i. Through ModelInterval.R and `LKrigSetupLattice`
+  b. Work through LKinfo and BasisFunction: 
+    -`BasisFunction = get(LKinfo$basisInfo$BasisFunction)`
+    i. Include checking behavior through LKrig.basis
+
+2. Adapt to 2-d and tensor product
+  a. Work through `Tensor.basis.R` 
+  b. Plot/visualize
+  
+3. Get working in dev branch of LatticeKrig
+  a. Run as many functions as needed here until changes are made to my branch
+  b. When prepping for "final" release we will need a lot of checks.
+
+
+Notes: (remove later)
+ - \item{LKrigSetupLattice.LKInterval}{Creates a 1-d lattice.} (for 1-d example)
+
+```{r base_nonLK}
+#setup up grid/knots at normal intervals (figure our delta later)
+x_grid <- seq(-0.5, 6.2, 0.01)
+nc <- 8
+buffer <- 2
+overlap <- 1  #fixed
+
+rangeLocations <-  range(x_grid)
+
+grid.info <- list( xmin = rangeLocations[1], xmax= rangeLocations[2], 
+                   range = rbind(rangeLocations))
+delta <- ( grid.info$xmax - grid.info$xmin ) / ( nc - 1 )
+
+buffer.width <- buffer * delta
+grid.list <- list(x = seq(grid.info$xmin - buffer.width, 
+            grid.info$xmax + buffer.width, delta) ) #centers
+
+class( grid.list) <- "gridList"  #(add if needed)
+
+#with nlevel > 1 mLevel[j]
+mLevel <- length(grid.list$x)
+offset <- as.integer(c(0, cumsum(mLevel)))
+
+basis.delta <- (delta*overlap)
+
+
+xgrid_bsplines <- matrix(NA, nrow = length(x_grid))
+for(j in grid.list$x){
+  xgrid_bsplines <- cbind(xgrid_bsplines, cubicSplineBasis(((x_grid-j)/basis.delta)))
+}
+xgrid_bsplines <- xgrid_bsplines[,-1]
+  
+
+test_grid <- seq(min(grid.list$x), max(grid.list$x), 0.01)
+
+test_bsplines <- matrix(NA, nrow = length(test_grid))
+for(j in grid.list$x){
+  test_bsplines <- cbind(test_bsplines, cubicSplineBasis(((test_grid-j)/basis.delta)))
+}
+test_bsplines <- test_bsplines[,-1]
+
+#rowSums(test_bsplines)
+
+plot(range(grid.list$x), c(0,1), type = "n", xlab = "x", ylab = "")
+abline(v = grid.list$x, lty = 2)
+abline(v = rangeLocations, lty = 2, lwd = 2)
+matlines(test_grid, test_bsplines, ylim = c(0,1), lty = 1)
+matlines(x_grid, xgrid_bsplines, ylim = c(0,1), lty = 1, lwd = 2.2)
+lines(test_grid, rowSums(test_bsplines), col = "gray", lwd = 2)
+```
+
+
+```{r grid_dist}
+#LKDistGrid examination
+
+n1<- nrow(x1)
+info<- summary( grid.list)
+deltaScaled <- basis.delta/info$dx
+max.points <- n1 * ceiling(prod(deltaScaled*2 + 1 ) )
+
+Nmax<- LKGridFindNmax(n1, max.points, mean.neighbor, delta, gridList)
+```
+
+
+# 1 Set 1-D Geometry
+
+```{r lk_1d}
+#using LKinterval:
+
+#build LKinfo object  then pass directly to function from ModelInterval.R
+
+```
+
+
