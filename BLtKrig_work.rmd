@@ -1,0 +1,168 @@
+---
+title: "BLtKrig_work"
+author: "Ryan Peterson"
+date: "2024-11-14"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+```
+
+
+```{r load}
+setwd("~/COS_LK")
+
+#data:
+load(file = "synthetic_data.rda") #TODO: change data location in files
+
+#functions
+source("DF_LK/R/bspline_poly.R") #cubic b-splines basis function
+#TODO: bring in LK updates directly
+
+```
+
+
+Notes:
+
+1. Define setup for gibbs sampler for $\kappa$ and $\lambda$.
+- This is just the necessary matrix things that have to be done before using the log-likelihood.
+- We may need to functionalize these steps. (check on efficiency )
+
+
+```{r group_subsets}
+#TODO: fix this later
+
+synth_df <- data.frame(sGrid, look_stat)
+
+unique(synth_df$x)
+
+n <- 1000
+set.seed(350)
+sub1_df <- synth_df[sample(nrow(synth_df), n, replace = FALSE), ]
+
+#unique(synth_df$x)
+#unique(sub1_df[order(sub1_df$x),]$x)
+
+#TODO: sort be increasing x or y
+#create a for loop so that we can make sure both are increasing
+sorted_df <- sub1_df[order(sub1_df$y, sub1_df$x), ]
+rownames(sorted_df) <- NULL
+
+x_vals <- unique(sorted_df$x)
+y_vals <- unique(sorted_df$y)
+
+# Create a matrix of z values
+z_matrix <- matrix(sorted_df$look_stat, nrow = length(x_vals), ncol = length(y_vals), byrow = TRUE)
+
+```
+
+
+```{r}
+
+image(x = x_vals, y = y_vals, z = z_matrix,
+      xlab = "X", ylab = "Y", main = "Image Plot")
+
+```
+
+```{r new_functions}
+
+#basis_matrix function,
+##used
+
+basis_matrix <- function(){
+  
+  
+  
+}
+
+```
+
+
+
+```{r}
+n <- length(sub1_df$look_stat)
+
+#basis matrix setup
+grid_delta <- LKinfo_stat$latticeInfo$delta
+grid_x <- LKinfo_stat$latticeInfo$grid[[1]]$x
+grid_y <- LKinfo_stat$latticeInfo$grid[[1]]$y
+
+test_bsplines_x <- matrix(NA, nrow = length(sub1_df$x))
+for(j in grid_x){
+  test_bsplines_x <- cbind(test_bsplines_x,
+                           cubicSplineBasis(((sub1_df$x-j)/grid_delta)))
+}
+
+test_bsplines_x <- test_bsplines_x[,-1]
+
+test_bsplines_y <- matrix(NA, nrow = length(sub1_df$y))
+for(k in grid_y){
+  test_bsplines_y <- cbind(test_bsplines_y,
+                           cubicSplineBasis(((sub1_df$y-k)/grid_delta)))
+}
+
+test_bsplines_y <- test_bsplines_y[,-1]
+
+test_x <- test_bsplines_x[ ,1]
+test_y <- test_bsplines_y[ ,1]
+test_xy <- outer(test_x, test_y, "*")
+nrow(test_xy)
+ncol(test_xy)
+
+for (i in 1:ncol(test_bsplines_x)) {
+  phi_x <- test_bsplines_x[ ,i]
+  phi_y <- test_bsplines_y[ ,i]
+}
+
+
+m <- length(grid_x) * length(grid_y)
+phi_mat <- matrix(NA, nrow = n, ncol = m)
+for (i in 1:ncol(test_bsplines_x)) {
+  for (k in 1:ncol(test_bsplines_x)) {
+    phi_x <- test_bsplines_x[ ,i]
+    phi_y <- test_bsplines_y[ ,k]
+    tensor_xy <- outer(phi_x, phi_y, "*")
+    
+  }
+}
+
+
+
+```
+
+
+```{r LK_testblock}
+
+#from LKrig.basis() 
+
+
+PHI <- spam::cbind.spam(PHI, PHItemp) #convert to spam
+#Note: rho object is the marginal variance
+ if (!is.null( LKinfo$rho.object) ) {
+      wght <- c(predict(LKinfo$rho.object, x1))
+    }
+    else{
+      wght<- ifelse( is.na( LKinfo$rho), 1.0, LKinfo$rho )
+    }
+      
+    if( length( wght)>1){
+      PHI <- diag.spam(sqrt(wght)) %*% PHI
+      }
+    else{
+      PHI <-sqrt(wght)*PHI
+      }
+#############    attr(PHI, which = "LKinfo") <- LKinfo
+    return(PHI)
+
+LKinfo_stat$latticeInfo
+
+#LKinfo_stat$a.wght <- a.wght_new
+```
+
+
