@@ -1,0 +1,141 @@
+---
+title: "LKbasis_figs"
+author: "Ryan Peterson"
+date: "2024-12-18"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+```{r}
+suppressMessages(library(LatticeKrig))
+
+#suppressMessages(library(rgl))
+```
+
+Update to be used for basis function comparisons (via visualization)
+
+- move over from LKrig_gibbs since we are not doing the bayesian part of this right now.
+
+```{r}
+setwd("~/COS_LK")
+
+#data:
+load(file = "Bayes/synthetic_data.rda") 
+
+#functions
+source("DF_LK/R/bspline_poly.R") #cubic b-splines basis function
+#TODO: bring in LK updates directly
+
+source("LK_dev/Tensor.basis.R")
+source("LK_dev/ModelRectangle.R")
+
+#used for corrections to LKrigSAR (we might need to push it up)
+source("LK_dev/LKrig.devfunction.R")
+source("LK_dev/LKrig.precision.R")
+```
+
+
+
+```{r new_functions}
+
+#basis_matrix function,
+##used
+
+basis_matrix <- function(sub1_df,  grid_x, grid_y, grid_delta){
+  
+  #TODO: replace grid_x,y,delta with LKinfo
+  n <- length(sub1_df[,1])
+  test_bsplines_x <- matrix(NA, nrow = length(sub1_df[,1]))
+  for(j in grid_x){
+    test_bsplines_x <- cbind(test_bsplines_x,
+                             cubicSplineBasis(((sub1_df[,1]-j)/grid_delta)))
+  }
+  
+  test_bsplines_x <- test_bsplines_x[,-1]
+  
+  test_bsplines_y <- matrix(NA, nrow = length(sub1_df[,2]))
+  for(k in grid_y){
+    test_bsplines_y <- cbind(test_bsplines_y,
+                             cubicSplineBasis(((sub1_df[,2]-k)/grid_delta)))
+  }
+  
+  test_bsplines_y <- test_bsplines_y[,-1]
+  
+  #test_x <- test_bsplines_x[ ,3]
+  #test_y <- test_bsplines_y[ ,3]
+  #test_xy <- outer(test_x, test_y, "*")
+  #nrow(test_xy)
+  #ncol(test_xy)
+  
+  #tensor_list <- list()
+  m <- length(grid_x) * length(grid_y)
+  phi_mat <- matrix(NA, nrow = n)
+  for (i in 1:ncol(test_bsplines_x)) {
+    for (k in 1:ncol(test_bsplines_y)) {
+      phi_x <- test_bsplines_x[ ,i]
+      phi_y <- test_bsplines_y[ ,k]
+      tensor_xy <- outer(phi_x, phi_y, "*")
+      phi_mat <- cbind(phi_mat, diag(tensor_xy))
+    }
+  }
+  
+  phi_mat <- phi_mat[,-1]
+  phi_spam <- as.spam(phi_mat)
+  
+  
+  return(phi_spam)
+}
+
+```
+
+```{r}
+synth_df <- data.frame(sGrid, look_stat)
+
+n <- 1500
+set.seed(350)
+sub1_df <- synth_df[sample(nrow(synth_df), n, replace = FALSE), ]
+```
+
+```{r}
+grid_delta <- LKinfo_stat$latticeInfo$delta
+grid_x <- LKinfo_stat$latticeInfo$grid[[1]]$x
+grid_y <- LKinfo_stat$latticeInfo$grid[[1]]$y
+
+phi_base <- basis_matrix(sub1_df, grid_x, grid_y, grid_delta) #as spam
+
+level <- LKinfo_stat$nlevel 
+LKinfo_stat$sigma
+LKinfo_stat$rho
+LKinfo_stat$lambda
+```
+
+```{r}
+M <- 48
+gridList_new <- list( x= seq( -1,1,length.out= M),
+                 y= seq( -1,1,length.out= M) )
+sGrid_new <- make.surface.grid(gridList_new)
+
+SE_coords <- cbind(synth_df$x, synth_df$y)
+
+fit_LK <- LatticeKrig(SE_coords, synth_df$look_stat,
+            nu=1.0, nlevel=1, NC.buffer = 2, findAwght = TRUE,
+                          NC=20, normalize=TRUE)
+
+
+lk_hat <- predictSurface(fit_LK, gridList_new)
+
+#TODO: png output
+image.plot(lk_hat)
+
+png(filename = "pred_base.png", width = 1800, height = 1800, res = 300)
+image.plot(lk_hat, 
+           xlab = "x", ylab = "y", main = "Predicted - Wendland")
+dev.off()
+```
+
+

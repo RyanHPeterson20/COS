@@ -194,8 +194,8 @@ sGrid <- make.surface.grid(gridList)
 
 ######### How to simulate with single awght ######### 
 LKinfo_stat <- LKrigSetup(sDomain, nu=1.0, nlevel=1, NC.buffer = 2,
-                          a.wght = 4.01,  lambda = 0.5, sigma = 1, rho = 2,
-                          NC=20, normalize=FALSE)
+                          a.wght = 4.1,  lambda = 1, sigma = 1, rho = 1,
+                          NC=20, normalize=TRUE)
 
 set.seed(351)
 look_stat <- LKrig.sim(sGrid, LKinfo_stat, M=1)
@@ -205,20 +205,21 @@ save(sGrid, look_stat, LKinfo_stat, file = "synthetic_data.rda")
 
 png(filename = "synth.png", width = 1800, height = 1800, res = 300)
 image.plot(matrix(look_stat,96,96), 
-           xlab = "x", ylab = "y")
+           xlab = "x", ylab = "y", main = "Synthetic Data (True Field)")
 dev.off()
 
 shape <- 3   # shape parameter α
-scale <- 1   # scale parameter β
+scale <- 0.25   # scale parameter β
 
 # Plot the inverse-gamma density
 curve(dinvgamma(x, shape = shape, scale = scale),
-      from = 0.1, to = 5,   # Define the x-axis range, avoiding zero
+      from = 0.0001, to = 5,   # Define the x-axis range, avoiding zero
       ylab = "Density",
       xlab = "x",
       xlim = c(0,5),
       main = paste("Inverse-Gamma Distribution\n(shape =", shape, ", scale =", scale, ")"),
       col = "blue",
       lwd = 2)
+
 
 
