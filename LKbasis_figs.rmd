@@ -129,6 +129,7 @@ LKinfo_stat$lambda
 ```{r}
 #create viz to see if I made the correct base
 phi_full <- spam2full(phi_base)
+
 ```
 
 

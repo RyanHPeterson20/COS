@@ -24,7 +24,7 @@ synth_df <- data.frame(sGrid, look_stat)
 LKinfo_base <- LKinfo_stat
 
 #sample from synthetic data
-n <- 750
+n <- 1200
 set.seed(350)
 sub1_df <- synth_df[sample(nrow(synth_df), n, replace = FALSE), ]
 
@@ -160,8 +160,14 @@ overlap = 2
 #overlap for cubic b-spline is 2
 LKinfo_stat$basisInfo$overlap <- 2
 
-#change basis function type
+#change basis infor
 LKinfo_stat$basisInfo$BasisFunction <- "CubicBSpline"
+LKinfo_stat$basisInfo$BasisType <- "Tensor"
+
+#other updates in LKinfo
+LKinfo_stat$normalize <- FALSE
+LKinfo_stat$BasisFunction <- "CubicBSpline"
+LKinfo_stat$BasisType <- "Tensor"
 ```
 
 
@@ -258,11 +264,7 @@ Add in some internals from LKrig.basis to update the phi (basis function)
 
 ```{r lkrig.basis_test}
 
-#updates to LKinfo
-LKinfo_stat$basisInfo$BasisType <- "Tensor"
-LKinfo_stat$normalize <- FALSE
-LKinfo_stat$BasisFunction <- "CubicBSpline"
-LKinfo_stat$BasisType <- "Tensor"
+
 
 #checking on alphaObject, is null in this 
 #Lines 139-145
@@ -286,23 +288,35 @@ if (!is.null( LKinfo_stat$rho.object) ) {
 PHI <-sqrt(wght)*PHItemp
 ```
 
+
+```{r phi_viz}
+PHI_full <- spam2full(PHItemp)
+
+c_test <- rep(1, length.out = nrow(sub1_df))
+test_full <- t(c_test) %*% PHI_full
+```
+
+
 4. LKrig()
 
-Test using LKrig but pass in X=PHI
+Test using LKrig but pass in X=PHI and using the base Wendland.
+
+In both cases we are using the parameters from the synthetic LK info.
+- Need to get the MLE working for both.
 
 ```{r lkrig}
 SE_coords <- cbind(sub1_df$x, sub1_df$y)
 SE_data <- sub1_df$look_stat
 
 out <- LKrig(SE_coords, SE_data, LKinfo = LKinfo_stat, X = PHI)
-out2 <-  LKrig(SE_coords, SE_data, LKinfo = LKinfo_base)
+out2 <-  LKrig(SE_coords, SE_data, LKinfo = LKinfo_base, normalize = FALSE, BasisType = "Tensor")
 
 ```
 
 
 ```{r predict}
 
-M <- 48
+M <- 72
 gridList_new <- list( x= seq( -1,1,length.out= M),
                  y= seq( -1,1,length.out= M) )
 sGrid_new <- make.surface.grid(gridList_new)
@@ -333,9 +347,21 @@ image.plot(lk_hat2,
 dev.off()
 ```
 
-```{r}
-#TODO: get side by side comparisons and differencesof Wendland, Cubic B-spline, etc (maybe compare )
+```{r compare_viz}
+#TODO: get side by side comparisons and differences of Wendland, Cubic B-spline, etc (maybe compare )
+
+zrange <- range(synth_df$look_stat, !is.na(lk_hat$z), !is.na(lk_hat2$z))
+
+set.panel(1,3)
+image.plot(lk_hat, zlim = zrange,
+           xlab = "x", ylab = "y", main = "Predicted - Cubic B-Spline")
+image.plot(matrix(synth_df$look_stat,96,96), zlim = zrange,
+           xlab = "x", ylab = "y", main = "Synthetic Data (True Field)")
+image.plot(lk_hat2, zlim = zrange,
+           xlab = "x", ylab = "y", main = "Predicted - Wendland")
 ```
+
+
 
 
 ```{r}
