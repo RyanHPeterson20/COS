@@ -1,0 +1,362 @@
+---
+title: "LK Update Notes"
+author: "Ryan Peterson"
+date: "2025-01-16"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r library}
+suppressMessages(library(LatticeKrig))
+```
+
+```{r test_data}
+setwd("~/COS_LK")
+
+#data:
+load(file = "DF_LK/synthetic_data.rda") 
+
+synth_df <- data.frame(sGrid, look_stat)
+LKinfo_base <- LKinfo_stat
+
+#sample from synthetic data
+n <- 750
+set.seed(350)
+sub1_df <- synth_df[sample(nrow(synth_df), n, replace = FALSE), ]
+
+#sample plot
+bubblePlot(sub1_df$x, sub1_df$y, sub1_df$look_stat, 
+           col = tim.colors, main = "Synth Data - Sample Points")
+
+```
+
+```{r imported_functions}
+setwd("~/COS_LK")
+#functions (custom)
+source("DF_LK/R/bspline_poly.R") #cubic b-splines basis function
+
+#functions (LK_dev)
+source("LK_dev/LKDistComponents.R")
+source("LK_dev/Tensor.basis.R")
+source("LK_dev/LKrig.basis.R")
+
+#source("LK_dev/ModelRectangle.R")
+```
+
+
+Code to test implementation of the the basis function directly into LKrig
+
+Needed function/files (and notes):
+(work backwards?, figuring out where the basis function enters into the code.)
+ 
+- LatticeKrig(): for the mle (replace with MLE later), adds mle to LKrig()
+-- Do we need to have an updated basis function here?
+
+- LKrig(): main function for latticekrig
+
+- LKrigSetup(): essential for setting up basically everything in LK
+
+
+# LKrigSetup()
+
+Sets LKinfo generally
+
+TODO: flesh this out later
+
+# LKrig()
+
+Parameters: (x, y,...)
+
+Line 44: LKinfo <- do.call("LKrigSetup", c(list(x = x ), list(...),...)
+Line 48: LKinfo<- do.call("LKinfoUpdate", c(list(LKinfo=LKinfo), list(...)) )
+
+TODO: check LKinfoUpdate to see if we will have an issue with new features added to LKinfo. 
+
+Recall do.call 
+
+Line 89-94:  object<- createLKrigObject( x, y, weights, Z, X, U, LKinfo,...
+- Used to create objects used in later function calls within
+- Note X in above function is for the basis functions.
+
+Line 121: wX<- LKrigMakewX( object, verbose=verbose)
+ 
+
+## LKrigMakewX
+
+Sets up wX with known or unknown wX (weighted basis function matrix)
+
+Line: 30-31  wX <- diag.spam(sqrt(object\$weights)) %*% LKrig.basis(object\$x, object\$LKinfo, verbose = FALSE)
+- This is from the else (no object\$X) and uses LKrig.basis to set-up object\$X.
+
+## LKrig.basis
+
+(locally: COS_LK/LK_dev)
+
+We use the tensor type with modifications:
+
+Lines 86-91: PHItemp <- Tensor.basis(  x1, centers, basis.delta[l],...)
+- There are a lot of LKinfo setting that are used before (and in this function call), they are:
+
+LKinfo\$ :
+- nlevel (number of levels)
+- normalize (not needed)
+- distance.type (used redundantly in Tensor.basis function call)
+basisInfo\$ :
+- BasisType=="Tensor" (sets type of basis function we are using)
+- max.points ()
+- mean.neighbor ()
+- BasisFunction () 
+
+
+We also use 
+Line 63: basis.delta <- LKrigLatticeScales(LKinfo) 
+- Call to this other function to get basis.delta (distance between nodes)
+
+
+### Tensor.basis
+
+Default Parameters: (x1, centers, basis.delta,
+                     max.points = NULL, 
+                  mean.neighbor = 50,
+                  BasisFunction = "WendlandFunction", 
+                  distance.type = "Euclidean"
+
+passes basically everything to LKrigDistance, include the components = TRUE
+(Radial.basis uses components = FALSE)
+
+Line 42:  out<- LKrigDistance( x1, centers,...)
+- This gets distances to each node center
+
+Line 53:  temp <- do.call( BasisFunction, list(d=out$ra[,1]))
+- evaluates the basis function
+
+### LKrigDistance(Components)
+
+Begin here to check changes from radial to tensor basis function.
+
+Line 39-41: LKDistComponents(x1, x2, delta,
+	     max.points = max.points, mean.neighbor = mean.neighbor,
+	     distance.type = distance.type)
+- Uses LKDistComponents is components = TRUE
+
+
+Parameters: (  x1, x2, delta,...
+- x1: data locations
+- x2: lattice centers
+
+# Testing Section
+
+## LKinfo Changes
+
+This is a list of things that need to be done or changed to LKinfo
+
+overlap = 2
+
+```{r lkinfo_changes}
+#overlap for cubic b-spline is 2
+LKinfo_stat$basisInfo$overlap <- 2
+
+#change basis function type
+LKinfo_stat$basisInfo$BasisFunction <- "CubicBSpline"
+```
+
+
+## LKrig.basis Test/Change
+
+Testing and changing LKrig.basis() and other functions to allow for the new basis function.
+
+Beginning at the bottom, working up
+
+1. LKrigDistance()
+
+With components = TRUE uses LKDistComponents()
+
+Using code from Tensor.basis and LKrig.basis to setup necessary variables.
+
+```{r lkdist_test}
+#testing LKDistComponents()
+
+#setup
+#using LKinfo_stat as our LKinfo
+#repeated again below when testing Tensor.basis and LKrig.basis
+nlevel <- LKinfo_stat$nlevel #number of levels
+distance.type <- LKinfo_stat$distance.type
+basis.delta <- LKrigLatticeScales(LKinfo_stat)
+centers <- LKrigLatticeCenters(LKinfo_stat, Level=1)
+
+SE_coords <- cbind(sub1_df$x, sub1_df$y) #x1 (locations)
+mean.neighbor <- 50
+
+
+dist_test <- LKrigDistance( SE_coords, centers,
+                             delta =  basis.delta,
+                        max.points = max.points,
+                     mean.neighbor = mean.neighbor,
+                     distance.type = distance.type,
+                        components = TRUE)    
+
+#dist_test <- LKDistComponents(SE_coords, centers, basis.delta)
+```
+
+
+2. Tensor.basis()
+
+```{r tensor_test}
+#Tensor.basis setup
+x1 <- SE_coords
+max.points = NULL
+
+dimension <- ncol(x1)
+n1 <- nrow(x1)
+if (is.null(max.points)) {
+    Nmax <- n1 * mean.neighbor
+} else {
+    Nmax <- max.points
+}
+
+#adjusting dist_Test for scale
+dist_test$ra <- dist_test$ra/basis.delta
+
+#basis function call
+BasisFunction <- "WendlandFunction"
+
+wendland_out <- do.call( BasisFunction, list(d=dist_test$ra[,1]))
+
+BasisTest <- "CubicBSpline"
+
+bspline_out <- do.call( BasisTest, list(d=dist_test$ra[,1]))
+
+if (dimension > 1) {
+    for (j in (2:dimension)) {
+        wendland_out <- wendland_out * do.call( BasisFunction, list( d=dist_test$ra[,j]))
+        bspline_out <-  bspline_out * do.call( BasisTest, list(d=dist_test$ra[,j]))
+    }
+}
+
+
+
+```
+
+```{r full_tensor_test}
+l <- 1
+x1 <- SE_coords
+PHItemp <- Tensor.basis(  x1, centers, basis.delta[l],
+                                max.points = LKinfo_stat$basisInfo$max.points,
+                             mean.neighbor = LKinfo_stat$basisInfo$mean.neighbor, 
+                             BasisFunction = get(LKinfo_stat$basisInfo$BasisFunction),
+                             distance.type = LKinfo_stat$distance.type)
+```
+
+
+3. LKrig.basis()
+
+Add in some internals from LKrig.basis to update the phi (basis function) 
+
+```{r lkrig.basis_test}
+
+#updates to LKinfo
+LKinfo_stat$basisInfo$BasisType <- "Tensor"
+LKinfo_stat$normalize <- FALSE
+LKinfo_stat$BasisFunction <- "CubicBSpline"
+LKinfo_stat$BasisType <- "Tensor"
+
+#checking on alphaObject, is null in this 
+#Lines 139-145
+if (is.null( LKinfo_stat$alphaObject[[l]]) ){
+  wght <- LKinfo_stat$alpha[[l]]
+} else{
+# spatially varying alpha extension         
+  wght <- LKinfo_stat$alpha[[l]]*c(predict(LKinfo_stat$alphaObject[[l]], x1))
+}
+
+
+# rho may not be provided when estimating a model 
+#Lines 167-173
+if (!is.null( LKinfo_stat$rho.object) ) {
+  wght <- c(predict(LKinfo_stat$rho.object, x1))
+} else{
+  wght<- ifelse( is.na( LKinfo_stat$rho), 1.0, LKinfo_stat$rho )
+}
+
+#update PHI temp with rho
+PHI <-sqrt(wght)*PHItemp
+```
+
+4. LKrig()
+
+Test using LKrig but pass in X=PHI
+
+```{r lkrig}
+SE_coords <- cbind(sub1_df$x, sub1_df$y)
+SE_data <- sub1_df$look_stat
+
+out <- LKrig(SE_coords, SE_data, LKinfo = LKinfo_stat, X = PHI)
+out2 <-  LKrig(SE_coords, SE_data, LKinfo = LKinfo_base)
+
+```
+
+
+```{r predict}
+
+M <- 48
+gridList_new <- list( x= seq( -1,1,length.out= M),
+                 y= seq( -1,1,length.out= M) )
+sGrid_new <- make.surface.grid(gridList_new)
+
+lk_hat <- predictSurface(out, gridList_new)
+
+#TODO: png output
+image.plot(lk_hat)
+
+setwd("~/COS_LK")
+png(filename = "pred_new2.png", width = 1800, height = 1800, res = 300)
+image.plot(lk_hat, 
+           xlab = "x", ylab = "y", main = "Predicted - Cubic B-Spline")
+dev.off()
+```
+
+```{r test}
+#using base wendland, without MLE
+lk_hat2 <- predictSurface(out2, gridList_new)
+
+#TODO: png output
+image.plot(lk_hat2)
+
+setwd("~/COS_LK")
+png(filename = "pred_base2.png", width = 1800, height = 1800, res = 300)
+image.plot(lk_hat2, 
+           xlab = "x", ylab = "y", main = "Predicted - Wendland")
+dev.off()
+```
+
+```{r}
+#TODO: get side by side comparisons and differencesof Wendland, Cubic B-spline, etc (maybe compare )
+```
+
+
+```{r}
+#TODO: get MLE working for this
+## Integrate the new basis function into a local version of LatticeKrig
+## Redo the "base" surface with new function (e.g. tensorprod_surface.png) 
+
+
+#everything below needs work.
+out2 <- LatticeKrig(SE_coords, sub1_df$look_stat,  X = PHI,
+            nu=1.0, nlevel=1, NC.buffer = 2, findAwght = TRUE,
+                          NC=20, LKinfo = LKinfo_stat)
+
+LKinfo_stat$sigma
+LKinfo_stat$rho
+LKinfo_stat$lambda
+
+sigma <- LKinfo_stat$sigma
+rho   <- LKinfo_stat$rho
+lambda<- LKinfo_stat$lambda
+
+sigma^2/rho
+```
+

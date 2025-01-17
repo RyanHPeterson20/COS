@@ -25,10 +25,12 @@ Update to be used for basis function comparisons (via visualization)
 setwd("~/COS_LK")
 
 #data:
-load(file = "Bayes/synthetic_data.rda") 
+load(file = "DF_LK/synthetic_data.rda") 
 
 #functions
 source("DF_LK/R/bspline_poly.R") #cubic b-splines basis function
+#TODO: import the c version of the b-spline function
+
 #TODO: bring in LK updates directly
 
 source("LK_dev/Tensor.basis.R")
@@ -66,6 +68,7 @@ basis_matrix <- function(sub1_df,  grid_x, grid_y, grid_delta){
   
   test_bsplines_y <- test_bsplines_y[,-1]
   
+  #TODO: check to see if this is all needed or not?
   #test_x <- test_bsplines_x[ ,3]
   #test_y <- test_bsplines_y[ ,3]
   #test_xy <- outer(test_x, test_y, "*")
@@ -97,12 +100,21 @@ basis_matrix <- function(sub1_df,  grid_x, grid_y, grid_delta){
 synth_df <- data.frame(sGrid, look_stat)
 
 n <- 1500
-set.seed(350)
+set.seed(351)
 sub1_df <- synth_df[sample(nrow(synth_df), n, replace = FALSE), ]
 ```
 
+
 ```{r}
-grid_delta <- LKinfo_stat$latticeInfo$delta
+#bubbleplot the sub1_df and synth_df
+bubblePlot(sub1_df$x, sub1_df$y, sub1_df$look_stat, 
+           col = tim.colors)
+#bubblePlot(synth_df$x, synth_df$y, synth_df$look_stat)
+```
+
+
+```{r}
+grid_delta <- 2*LKinfo_stat$latticeInfo$delta
 grid_x <- LKinfo_stat$latticeInfo$grid[[1]]$x
 grid_y <- LKinfo_stat$latticeInfo$grid[[1]]$y
 
@@ -115,16 +127,26 @@ LKinfo_stat$lambda
 ```
 
 ```{r}
+#create viz to see if I made the correct base
+phi_full <- spam2full(phi_base)
+```
+
+
+```{r}
+#TODO: set XB to 0 manually (U or Z matrix?)
+
 M <- 48
 gridList_new <- list( x= seq( -1,1,length.out= M),
                  y= seq( -1,1,length.out= M) )
 sGrid_new <- make.surface.grid(gridList_new)
 
-SE_coords <- cbind(synth_df$x, synth_df$y)
+#base (wendland) latticekrig on 
+SE_coords <- cbind(sub1_df$x, sub1_df$y)
 
-fit_LK <- LatticeKrig(SE_coords, synth_df$look_stat,
-            nu=1.0, nlevel=1, NC.buffer = 2, findAwght = TRUE,
-                          NC=20, normalize=TRUE)
+#fit_LK <- LatticeKrig(SE_coords, sub1_df$look_stat,
+#            nu=1.0, nlevel=1, NC.buffer = 2, findAwght = TRUE,
+#                          NC=20, normalize=TRUE, BasisType= "Tensor")
+
 
 
 lk_hat <- predictSurface(fit_LK, gridList_new)
@@ -132,10 +154,86 @@ lk_hat <- predictSurface(fit_LK, gridList_new)
 #TODO: png output
 image.plot(lk_hat)
 
+setwd("~/COS_LK")
 png(filename = "pred_base.png", width = 1800, height = 1800, res = 300)
 image.plot(lk_hat, 
            xlab = "x", ylab = "y", main = "Predicted - Wendland")
 dev.off()
 ```
 
+```{r}
+summary(fit_LK$MLE)
+fit_LK$MLE$a.wght.MLE
+fit_LK$sigma.MLE
+fit_LK$rho.MLE
+fit_LK$lambda.fixed
+```
 
+
+
+```{r}
+#TODO: add in identical version for wendland function (see above?)
+
+mle_a.wght <- fit_LK$MLE$a.wght.MLE
+mle_tau <- fit_LK$sigma.MLE
+
+M <- 48
+gridList_new <- list( x= seq( -1,1,length.out= M),
+                 y= seq( -1,1,length.out= M) )
+sGrid_new <- make.surface.grid(gridList_new)
+
+#post_a.wght <- (4 + post_kappa^2)
+
+LKinfo_stat$a.wght[[level]] #<- list(mle_a.wght) 
+LKinfo_stat$sigma[[level]] #<- mle_tau
+
+
+wy <-  sub1_df$look_stat#data
+wX <- phi_base #spam version of the basis functions
+Q <- LKrig.precision(LKinfo_stat)
+
+sigma <- as.numeric(LKinfo_stat$sigma) #update with prior (tau)
+rho   <- LKinfo_stat$rho #sigma^2
+  
+lambda <- sigma^2/rho
+
+#update to full matrix
+wX <- spam2full(wX)
+Q <- spam2full(Q)
+
+#G matrix
+G <- t(wX) %*% wX + LKinfo_stat$lambda * (Q)
+GCholesky <- chol(G, memory = LKinfo_stat$choleskyMemory)
+
+#since wU is 0, then residuals are wY
+residualFixed <- wy
+
+c.coef <- forwardsolve(GCholesky, transpose = TRUE,
+                       t(wX) %*% (residualFixed), upper.tri = TRUE)
+
+quad.form <-  (1/lambda) * c( colSums(as.matrix(residualFixed^2))  - 
+                                    colSums( as.matrix( c.coef^2) ) )
+
+
+#final c.coef step
+c.coef <- backsolve(GCholesky, c.coef)
+
+
+sub1_new <- as.data.frame(sGrid_new)
+
+
+grid_delta <- 2*LKinfo_stat$latticeInfo$delta
+grid_x <- LKinfo_stat$latticeInfo$grid[[1]]$x
+grid_y <- LKinfo_stat$latticeInfo$grid[[1]]$y
+
+phi_new <- basis_matrix(sub1_new, grid_x, grid_y, grid_delta)
+phi_newFull <- spam2full(phi_new)
+
+test_new <- phi_newFull %*% c.coef
+
+
+png(filename = "pred_new.png", width = 1800, height = 1800, res = 300)
+image.plot(matrix(test_new,M,M), 
+           xlab = "x", ylab = "y", main = "Predicted - Cubic B-Spline")
+dev.off()
+```
